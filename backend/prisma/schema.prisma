@@ -1,0 +1,577 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum Role {
+  SUPER_ADMIN
+  MANAGER
+  CASHIER
+  STOCK_OFFICER
+  ACCOUNTANT
+  AUDITOR
+}
+
+enum MovementType {
+  OPENING
+  PURCHASE
+  SALE
+  RETURN
+  DAMAGED
+  EXPIRED
+  LOSS
+  ADJUSTMENT
+  TRANSFER_IN
+  TRANSFER_OUT
+}
+
+enum PaymentMethod {
+  CASH
+  MOBILE_MONEY
+  CARD
+  OTHER
+}
+
+enum SaleStatus {
+  COMPLETED
+  VOIDED
+}
+
+enum PurchaseStatus {
+  ORDERED
+  RECEIVED
+  CANCELLED
+}
+
+enum PromotionType {
+  PERCENT
+  FIXED
+  PROMO_PRICE
+  BULK
+  BOGO
+}
+
+enum SessionStatus {
+  OPEN
+  CLOSED
+}
+
+model Branch {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  name      String
+  address   String?
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users          User[]
+  registers      Register[]
+  stockLevels    StockLevel[]
+  stockMovements StockMovement[]
+  batches        ProductBatch[]
+  sales          Sale[]
+  purchases      Purchase[]
+  sessions       CashierSession[]
+  returns        Return[]
+  expenses       Expense[]
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role
+  branchId     String?
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  tokenVersion Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  branch   Branch?          @relation(fields: [branchId], references: [id])
+  sessions CashierSession[]
+
+  @@index([branchId, role])
+}
+
+model Register {
+  id        String   @id @default(uuid())
+  branchId  String
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  branch   Branch           @relation(fields: [branchId], references: [id])
+  sessions CashierSession[]
+
+  @@unique([branchId, name])
+}
+
+model Category {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  createdAt DateTime  @default(now())
+  products  Product[]
+}
+
+model Supplier {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  contact   String?
+  phone     String?
+  email     String?
+  address   String?
+  balance   Decimal  @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products       Product[]
+  purchases      Purchase[]
+  payments       SupplierPayment[]
+  supplierPrices SupplierPrice[]
+}
+
+model SupplierPayment {
+  id         String   @id @default(uuid())
+  supplierId String
+  userId     String
+  amount     Decimal
+  note       String?
+  createdAt  DateTime @default(now())
+
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+
+  @@index([supplierId, createdAt])
+}
+
+model SupplierPrice {
+  supplierId String
+  productId  String
+  unitCost   Decimal
+  updatedAt  DateTime @updatedAt
+
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@id([supplierId, productId])
+}
+
+model Product {
+  id            String   @id @default(uuid())
+  sku           String   @unique
+  name          String
+  brand         String?
+  manufacturer  String?
+  categoryId    String?
+  supplierId    String?
+  unit          String   @default("pcs")
+  packageSize   String?
+  imageUrl      String?
+  purchasePrice Decimal  @default(0)
+  taxRate       Decimal  @default(0)
+  minStock      Decimal  @default(0)
+  maxStock      Decimal?
+  tracksExpiry  Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  category       Category?       @relation(fields: [categoryId], references: [id])
+  supplier       Supplier?       @relation(fields: [supplierId], references: [id])
+  barcodes       Barcode[]
+  prices         PriceHistory[]
+  stockLevels    StockLevel[]
+  stockMovements StockMovement[]
+  batches        ProductBatch[]
+  saleItems      SaleItem[]
+  purchaseItems  PurchaseItem[]
+  promotions     Promotion[]
+  supplierPrices SupplierPrice[]
+
+  @@index([name])
+  @@index([categoryId])
+  @@index([isActive])
+}
+
+model Barcode {
+  id         String   @id @default(uuid())
+  code       String   @unique
+  productId  String
+  isPrimary  Boolean  @default(false)
+  isInternal Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+}
+
+model ExternalProductCache {
+  barcode   String   @id
+  data      Json
+  fetchedAt DateTime @default(now())
+}
+
+model PriceHistory {
+  id            String   @id @default(uuid())
+  productId     String
+  oldPrice      Decimal?
+  newPrice      Decimal
+  effectiveFrom DateTime
+  userId        String
+  reason        String?
+  createdAt     DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([productId, effectiveFrom])
+}
+
+model StockLevel {
+  productId String
+  branchId  String
+  quantity  Decimal @default(0)
+
+  product Product @relation(fields: [productId], references: [id])
+  branch  Branch  @relation(fields: [branchId], references: [id])
+
+  @@id([productId, branchId])
+  @@index([branchId])
+}
+
+model ProductBatch {
+  id         String    @id @default(uuid())
+  productId  String
+  branchId   String
+  batchNo    String
+  expiryDate DateTime?
+  quantity   Decimal   @default(0)
+  createdAt  DateTime  @default(now())
+
+  product   Product         @relation(fields: [productId], references: [id])
+  branch    Branch          @relation(fields: [branchId], references: [id])
+  movements StockMovement[]
+
+  @@unique([productId, branchId, batchNo])
+  @@index([branchId, expiryDate])
+}
+
+model StockMovement {
+  id          String       @id @default(uuid())
+  productId   String
+  branchId    String
+  batchId     String?
+  type        MovementType
+  quantity    Decimal
+  unitCost    Decimal?
+  userId      String
+  reference   String?
+  referenceId String?
+  notes       String?
+  createdAt   DateTime     @default(now())
+
+  product Product       @relation(fields: [productId], references: [id])
+  branch  Branch        @relation(fields: [branchId], references: [id])
+  batch   ProductBatch? @relation(fields: [batchId], references: [id])
+
+  @@index([productId, branchId, createdAt])
+  @@index([branchId, type, createdAt])
+  @@index([referenceId])
+}
+
+model Purchase {
+  id         String         @id @default(uuid())
+  number     String         @unique
+  supplierId String
+  branchId   String
+  status     PurchaseStatus
+  total      Decimal        @default(0)
+  notes      String?
+  createdById String
+  createdAt  DateTime       @default(now())
+  receivedAt DateTime?
+
+  supplier Supplier       @relation(fields: [supplierId], references: [id])
+  branch   Branch         @relation(fields: [branchId], references: [id])
+  items    PurchaseItem[]
+
+  @@index([branchId, createdAt])
+  @@index([supplierId])
+}
+
+model PurchaseItem {
+  id               String    @id @default(uuid())
+  purchaseId       String
+  productId        String
+  quantityOrdered  Decimal
+  quantityReceived Decimal   @default(0)
+  unitCost         Decimal
+  batchNo          String?
+  expiryDate       DateTime?
+
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@index([purchaseId])
+  @@index([productId])
+}
+
+model Customer {
+  id            String   @id @default(uuid())
+  name          String
+  phone         String?  @unique
+  email         String?
+  loyaltyPoints Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sales Sale[]
+
+  @@index([name])
+}
+
+model Promotion {
+  id         String        @id @default(uuid())
+  name       String
+  type       PromotionType
+  value      Decimal       @default(0)
+  minQty     Decimal       @default(1)
+  buyQty     Int           @default(1)
+  getQty     Int           @default(1)
+  productId  String?
+  startsAt   DateTime
+  endsAt     DateTime?
+  isActive   Boolean       @default(true)
+  createdAt  DateTime      @default(now())
+
+  product Product? @relation(fields: [productId], references: [id])
+
+  @@index([isActive, startsAt, endsAt])
+}
+
+model CashierSession {
+  id           String        @id @default(uuid())
+  registerId   String
+  branchId     String
+  cashierId    String
+  status       SessionStatus @default(OPEN)
+  openingCash  Decimal
+  expectedCash Decimal?
+  actualCash   Decimal?
+  difference   Decimal?
+  notes        String?
+  openedAt     DateTime      @default(now())
+  closedAt     DateTime?
+
+  register Register @relation(fields: [registerId], references: [id])
+  branch   Branch   @relation(fields: [branchId], references: [id])
+  cashier  User     @relation(fields: [cashierId], references: [id])
+  sales    Sale[]
+  returns  Return[]
+
+  @@index([branchId, openedAt])
+  @@index([cashierId, status])
+}
+
+model Sale {
+  id          String     @id @default(uuid())
+  clientId    String     @unique
+  receiptNo   String     @unique
+  branchId    String
+  sessionId   String
+  cashierId   String
+  customerId  String?
+  status      SaleStatus @default(COMPLETED)
+  subtotal    Decimal
+  discountTotal Decimal  @default(0)
+  taxTotal    Decimal    @default(0)
+  total       Decimal
+  changeGiven Decimal    @default(0)
+  offline     Boolean    @default(false)
+  soldAt      DateTime   @default(now())
+  voidedAt    DateTime?
+  voidedById  String?
+  voidReason  String?
+  createdAt   DateTime   @default(now())
+
+  branch   Branch         @relation(fields: [branchId], references: [id])
+  session  CashierSession @relation(fields: [sessionId], references: [id])
+  customer Customer?      @relation(fields: [customerId], references: [id])
+  items    SaleItem[]
+  payments Payment[]
+  returns  Return[]
+
+  @@index([branchId, soldAt])
+  @@index([sessionId])
+  @@index([cashierId, soldAt])
+}
+
+model SaleItem {
+  id            String  @id @default(uuid())
+  saleId        String
+  productId     String
+  name          String
+  quantity      Decimal
+  returnedQty   Decimal @default(0)
+  unitPrice     Decimal
+  unitCost      Decimal
+  discount      Decimal @default(0)
+  taxRate       Decimal @default(0)
+  taxAmount     Decimal @default(0)
+  lineTotal     Decimal
+
+  sale        Sale         @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product     Product      @relation(fields: [productId], references: [id])
+  returnItems ReturnItem[]
+
+  @@index([saleId])
+  @@index([productId])
+}
+
+model Payment {
+  id        String        @id @default(uuid())
+  saleId    String
+  method    PaymentMethod
+  amount    Decimal
+  reference String?
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+}
+
+model Return {
+  id           String        @id @default(uuid())
+  number       String        @unique
+  saleId       String
+  branchId     String
+  sessionId    String?
+  userId       String
+  approvedById String?
+  method       PaymentMethod
+  refundAmount Decimal
+  reason       String
+  createdAt    DateTime      @default(now())
+
+  sale    Sale            @relation(fields: [saleId], references: [id])
+  branch  Branch          @relation(fields: [branchId], references: [id])
+  session CashierSession? @relation(fields: [sessionId], references: [id])
+  items   ReturnItem[]
+
+  @@index([saleId])
+  @@index([branchId, createdAt])
+}
+
+model ReturnItem {
+  id         String  @id @default(uuid())
+  returnId   String
+  saleItemId String
+  quantity   Decimal
+  amount     Decimal
+  restock    Boolean @default(true)
+
+  return   Return   @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  saleItem SaleItem @relation(fields: [saleItemId], references: [id])
+
+  @@index([returnId])
+}
+
+model HeldSale {
+  id        String   @id @default(uuid())
+  branchId  String
+  userId    String
+  label     String?
+  payload   Json
+  createdAt DateTime @default(now())
+
+  @@index([branchId, userId])
+}
+
+model Expense {
+  id          String   @id @default(uuid())
+  branchId    String
+  userId      String
+  category    String
+  amount      Decimal
+  description String?
+  incurredAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@index([branchId, incurredAt])
+}
+
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  branchId  String?
+  action    String
+  entity    String
+  entityId  String?
+  before    Json?
+  after     Json?
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entity, entityId])
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+}
+
+/// Atomic document/barcode numbering (replaces PostgreSQL sequences).
+model Counter {
+  name  String @id
+  value Int    @default(0)
+}
+
+/// One row per synchronised record: its position in the Google Sheets queue.
+/// Maintained by database triggers (see the sync migration); status is PENDING | SYNCING | SYNCED | FAILED | CONFLICT.
+model SyncState {
+  entity        String
+  recordId      String
+  status        String    @default("PENDING")
+  changedAt     DateTime
+  remoteRef     String?
+  remoteHash    String?
+  attempts      Int       @default(0)
+  lastAttemptAt DateTime?
+  lastSyncedAt  DateTime?
+  error         String?
+
+  @@id([entity, recordId])
+  @@index([status, entity])
+}
+
+/// Synchronisation journal: errors, applied changes and conflicts awaiting an administrator's decision.
+model SyncLog {
+  id         String    @id @default(uuid())
+  level      String
+  entity     String?
+  recordId   String?
+  message    String
+  local      Json?
+  sheet      Json?
+  resolution String?
+  resolvedAt DateTime?
+  pushedAt   DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([level, resolution])
+  @@index([pushedAt])
+}

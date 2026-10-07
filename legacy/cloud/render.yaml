@@ -1,0 +1,29 @@
+# Render Blueprint: creates the API and a PostgreSQL database.
+# Deploy: Render dashboard -> New -> Blueprint -> select this repository.
+databases:
+  - name: pos-db
+    plan: basic-256mb
+    databaseName: pos
+    user: pos
+
+services:
+  - type: web
+    name: pos-api
+    runtime: node
+    rootDir: backend
+    plan: starter
+    buildCommand: npm ci --include=dev && npm run build
+    preDeployCommand: npm run db:migrate
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase: { name: pos-db, property: connectionString }
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        sync: false # set to your Vercel URL, e.g. https://your-pos.vercel.app
+      - key: TIMEZONE
+        value: Africa/Kampala

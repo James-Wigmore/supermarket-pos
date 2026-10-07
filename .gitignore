@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+coverage/
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+desktop/stage/
+client_secret*.json
+google.bin
+desktop/release/

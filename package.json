@@ -1,0 +1,14 @@
+{
+  "name": "supermarket-pos",
+  "private": true,
+  "description": "Supermarket POS, inventory and management system",
+  "scripts": {
+    "install:all": "npm --prefix backend install && npm --prefix frontend ci && npm --prefix desktop install",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "desktop:dev": "node desktop/packaging/stage.mjs --run",
+    "desktop:build": "node desktop/packaging/stage.mjs",
+    "check": "npm --prefix backend run typecheck && npm --prefix backend run lint && npm --prefix backend test && npm --prefix desktop run typecheck && npm --prefix frontend run lint && npm --prefix frontend test && npm --prefix frontend run build",
+    "desktop:package": "node desktop/packaging/stage.mjs --package"
+  }
+}

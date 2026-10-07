@@ -1,0 +1,27 @@
+name: Windows installer
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --prefix backend
+      - run: npm ci --prefix frontend
+      - run: npm ci --prefix desktop
+      # Add CSC_LINK / CSC_KEY_PASSWORD as repository secrets to sign the installer (optional).
+      - run: npm run desktop:package
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Supermarket-POS-Setup
+          path: desktop/release/Supermarket-POS-Setup.exe
+          if-no-files-found: error
