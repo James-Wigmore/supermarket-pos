@@ -1,7 +1,24 @@
 import { rmSync } from 'node:fs';
 import { TEST_DB_FILE } from './db-path';
 
-/** Removes the temporary SQLite test database (and its WAL files) after the run. */
-export default () => () => {
-  for (const suffix of ['', '-wal', '-shm']) rmSync(TEST_DB_FILE + suffix, { force: true });
+const cleanup = () => {
+  for (const suffix of ['', '-wal', '-shm']) {
+    try {
+      rmSync(TEST_DB_FILE + suffix, {
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      });
+    } catch {
+      // SQLite may still be locked briefly on Windows.
+    }
+  }
+};
+
+export default () => {
+  cleanup();
+
+  return () => {
+    cleanup();
+  };
 };
