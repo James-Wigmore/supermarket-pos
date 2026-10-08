@@ -41,7 +41,7 @@ const num = (key: string, label: string): Column => ({ key, label, type: 'number
 
 const completed = (c: Ctx) => Prisma.sql`s.status = 'COMPLETED' AND s."soldAt" >= ${c.from} AND s."soldAt" <= ${c.to} ${branchSql('s."branchId"', c.branchId)}`;
 
-interface PeriodRow {
+interface PeriodRow extends Record<string, unknown> {
   label: string;
   transactions: number;
   items: number;

@@ -16,11 +16,14 @@ export const PASSWORD = 'Password123!';
 const TABLES = [
   'ReturnItem', 'Return', 'Payment', 'SaleItem', 'Sale', 'HeldSale', 'CashierSession', 'Register', 'StockMovement',
   'ProductBatch', 'StockLevel', 'PurchaseItem', 'Purchase', 'SupplierPayment', 'SupplierPrice', 'Promotion', 'PriceHistory',
-  'Barcode', 'ExternalProductCache', 'Product', 'Category', 'Supplier', 'Customer', 'Expense', 'Setting', 'Counter', 'SyncState', 'SyncLog', '"User"', 'Branch',
+  'Barcode', 'ExternalProductCache', 'Product', 'Category', 'Supplier', 'Customer', 'Expense', 'Setting', 'Counter',
+  'SyncState', 'SyncLog', 'User', 'Branch',
 ];
 
 export const resetDb = async () => {
-  for (const table of TABLES) await prisma.$executeRawUnsafe(`DELETE FROM ${table}`);
+  for (const table of TABLES) {
+    await prisma.$executeRawUnsafe(`DELETE FROM "${table}"`);
+  }
   resetApprovalLocks();
 };
 
