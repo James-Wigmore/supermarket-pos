@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useApproval } from '../components/ApprovalDialog';
 import { BranchSelect } from '../components/BranchSelect';
 import { ReceiptView } from '../components/Receipt';
-import { Badge, Button, DataTable, ErrorNote, Modal, PageHeader, Pagination, Panel, Select, Textarea, inputCls, useToast } from '../components/ui';
+import { Badge, Button, DataTable, ErrorNote, Modal, PageHeader, Pagination, Panel, Select, Tabs, Textarea, inputCls, useToast } from '../components/ui';
 import { api, downloadFile } from '../lib/api';
 import { printPage } from '../lib/desktop';
 import { useAuth } from '../lib/auth';
@@ -113,8 +113,24 @@ const QueuedSales = () => {
   );
 };
 
+interface RefundRow { id: string; number: string; createdAt: string; method: PaymentMethod; refundAmount: string; reason: string; sale: { receiptNo: string } }
+
+const Refunds = ({ branchId }: { branchId: string }) => {
+  const [page, setPage] = useState(1);
+  const list = usePage<RefundRow>('returns', '/returns', { page, pageSize: 25, branchId: branchId || undefined });
+  return (
+    <Panel className="!p-0">
+      <DataTable rowKey={(r) => r.id} rows={list.data?.data} loading={list.isLoading} empty={<p className="p-10 text-center text-muted">No refunds recorded.</p>} columns={[
+        { header: 'Refund', cell: (r) => <b>{r.number}</b> }, { header: 'Date', cell: (r) => dateTime(r.createdAt) }, { header: 'Receipt', cell: (r) => r.sale.receiptNo },
+        { header: 'Method', cell: (r) => label(r.method) }, { header: 'Reason', cell: (r) => r.reason }, { header: 'Amount', cell: (r) => <b>{money(r.refundAmount)}</b>, align: 'right' }]} />
+      <Pagination meta={list.data?.meta} onPage={setPage} />
+    </Panel>
+  );
+};
+
 export const Sales = () => {
-  const { session } = useAuth();
+  const { session, can } = useAuth();
+  const [tab, setTab] = useState<'sales' | 'refunds'>('sales');
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [branchId, setBranchId] = useState('');
@@ -126,6 +142,8 @@ export const Sales = () => {
         <input aria-label="Search receipt" className={`${inputCls} !w-56`} placeholder="Receipt number" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
         <BranchSelect value={branchId} onChange={setBranchId} />
       </PageHeader>
+      {can('sale:read-all') && <Tabs value={tab} onChange={setTab} tabs={[{ id: 'sales', label: 'Sales' }, { id: 'refunds', label: 'Refunds' }]} />}
+      {tab === 'refunds' ? <Refunds branchId={branchId} /> : <>
       <QueuedSales />
       <Panel className="!p-0">
         <DataTable rowKey={(s) => s.id} rows={list.data?.data} loading={list.isLoading} onRowClick={(s) => setOpen(s.id)} empty={<p className="p-10 text-center text-muted">No sales found.</p>} columns={[
@@ -135,6 +153,7 @@ export const Sales = () => {
           { header: 'Total', cell: (s) => <b>{money(s.total)}</b>, align: 'right' }]} />
         <Pagination meta={list.data?.meta} onPage={setPage} />
       </Panel>
+      </>}
       {open && <SaleModal id={open} onClose={() => setOpen(null)} />}
     </>
   );

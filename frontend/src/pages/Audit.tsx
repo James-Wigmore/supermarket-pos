@@ -6,7 +6,7 @@ import { usePage } from '../lib/queries';
 
 interface Entry { id: string; action: string; entity: string; entityId: string | null; userName: string | null; ip: string | null; userAgent: string | null; createdAt: string; before: unknown; after: unknown }
 
-const ACTIONS = ['LOGIN', 'LOGOUT', 'LOGIN_FAILED', 'PRODUCT_CREATE', 'PRODUCT_UPDATE', 'PRICE_CHANGE', 'STOCK_ADJUST', 'STOCK_RECEIVE', 'SALE', 'REFUND', 'DISCOUNT', 'VOID', 'USER_CREATE', 'PERMISSION_CHANGE', 'MANAGER_APPROVAL', 'SESSION_CLOSE'];
+const ACTIONS = ['LOGIN', 'LOGOUT', 'LOGIN_FAILED', 'PRODUCT_CREATE', 'PRODUCT_UPDATE', 'PRICE_CHANGE', 'STOCK_ADJUST', 'STOCK_RECEIVE', 'SALE', 'REFUND', 'DISCOUNT', 'VOID', 'USER_CREATE', 'PERMISSION_CHANGE', 'MANAGER_APPROVAL', 'SESSION_CLOSE', 'PASSWORD_CHANGE', 'PASSWORD_RESET', 'TWO_FACTOR_ENABLED', 'TWO_FACTOR_DISABLED', 'TWO_FACTOR_RESET'];
 
 export const Audit = () => {
   const [page, setPage] = useState(1);

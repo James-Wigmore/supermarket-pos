@@ -46,5 +46,5 @@ export const bucket = (date: Date, unit: Period, tz = env.TIMEZONE) => {
   return monday.toISOString().slice(0, 10);
 };
 
-/** Midnight UTC today (expiry dates are calendar dates stored at midnight UTC). */
-export const utcToday = () => new Date(new Date().toISOString().slice(0, 10));
+/** Today's store date at midnight UTC (expiry dates are calendar dates stored at midnight UTC). */
+export const businessToday = () => new Date(dayKey(new Date()));

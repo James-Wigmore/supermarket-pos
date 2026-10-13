@@ -91,6 +91,10 @@ model User {
   isActive     Boolean  @default(true)
   lastLoginAt  DateTime?
   tokenVersion Int      @default(0)
+  twoFactorEnabled  Boolean @default(false)
+  twoFactorSecret   String?
+  twoFactorRecovery String?
+  twoFactorLastStep Int?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -289,6 +293,7 @@ model StockMovement {
 model Purchase {
   id         String         @id @default(uuid())
   number     String         @unique
+  clientRef  String?        @unique
   supplierId String
   branchId   String
   status     PurchaseStatus

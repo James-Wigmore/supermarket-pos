@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { app, auth, resetDb } from './helpers';
+import { app, auth, enrol, resetDb } from './helpers';
 
 const setup = {
   businessName: 'Corner Shop',
@@ -17,13 +17,17 @@ describe('first-run setup', () => {
     expect((await request(app).get('/api/setup/status')).body).toEqual({ needsSetup: true });
 
     expect((await request(app).post('/api/setup').send(setup)).status).toBe(201);
-    const login = await request(app).post('/api/auth/login').send({ email: 'owner@shop.test', password: setup.admin.password });
-    expect(login.body.user).toMatchObject({ email: 'owner@shop.test', role: 'SUPER_ADMIN' });
+    // the owner must enrol two-factor authentication at the first sign-in
+    const first = await request(app).post('/api/auth/login').send({ email: 'owner@shop.test', password: setup.admin.password });
+    expect(first.body).toMatchObject({ nextStep: 'setup' });
+    expect(first.body.token).toBeUndefined();
+    const { session } = await enrol(first.body.setupToken);
+    expect(session.user).toMatchObject({ email: 'owner@shop.test', role: 'SUPER_ADMIN' });
 
     expect((await request(app).get('/api/setup/status')).body).toEqual({ needsSetup: false });
-    const settings = await request(app).get('/api/settings').set(auth(login.body.token));
+    const settings = await request(app).get('/api/settings').set(auth(session.token));
     expect(settings.body).toMatchObject({ currency: 'USD', receipt: { storeName: 'Corner Shop' } });
-    const registers = await request(app).get('/api/registers').set(auth(login.body.token));
+    const registers = await request(app).get('/api/registers').set(auth(session.token));
     expect(registers.body.data).toHaveLength(2);
 
     expect((await request(app).post('/api/setup').send(setup)).status).toBe(409);

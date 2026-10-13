@@ -5,8 +5,11 @@ import { prisma } from './prisma';
 const DEFAULT_DIR = join(__dirname, '../../prisma/migrations');
 const BREAKPOINT = '--> statement-breakpoint';
 
-const statementsOf = (file: string) => readFileSync(file, 'utf8').split(BREAKPOINT).map((s) => s.trim()).filter(Boolean);
-
+const statementsOf = (file: string) =>
+  readFileSync(file, 'utf8')
+    .split(BREAKPOINT)
+    .map((s) => s.trim())
+    .filter((s) => s.replace(/--[^\r\n]*/g, '').trim().length > 0);
 /** Configures SQLite and applies pending migrations in order. Safe to call on every start. */
 export const migrate = async (dir = DEFAULT_DIR) => {
   await prisma.$queryRawUnsafe('PRAGMA journal_mode = WAL');

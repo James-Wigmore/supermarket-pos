@@ -1,8 +1,9 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { getSettings } from '../lib/settings';
 import { branchFor } from '../lib/scope';
 import { PROFIT_SQL, branchSql, rawRows as q } from '../lib/sql';
-import { dayKey, recentDays, startOfDay } from '../lib/time';
+import { businessToday, dayKey, recentDays, startOfDay } from '../lib/time';
 import type { Actor } from '../types';
 import { movingProducts } from './report.service';
 
@@ -25,6 +26,18 @@ const salesTrend = async (branchId?: string) => {
     }
   }
   return [...byDay.values()];
+};
+
+/** Batches still on the shelf that expire within the configured alert window, and those already past their date. */
+const expiryAlerts = async (branchId?: string) => {
+  const { expiryAlertDays } = await getSettings(prisma);
+  const today = businessToday();
+  const onShelf = { branchId, quantity: { gt: 0 } };
+  const [expiringSoon, expired] = await Promise.all([
+    prisma.productBatch.count({ where: { ...onShelf, expiryDate: { gte: today, lt: new Date(today.getTime() + (expiryAlertDays + 1) * DAY_MS) } } }),
+    prisma.productBatch.count({ where: { ...onShelf, expiryDate: { lt: today } } }),
+  ]);
+  return { windowDays: expiryAlertDays, expiringSoon, expired };
 };
 
 export const dashboard = async (actor: Actor, requestedBranch?: string) => {
@@ -59,6 +72,6 @@ export const dashboard = async (actor: Actor, requestedBranch?: string) => {
   return {
     today: { ...totals[0]!, ...items[0]!, grossProfit: profit[0]!.profit },
     payments, trend, stockValue: stock[0]!.value, lowStockCount: stock[0]!.low, outOfStockCount: stock[0]!.out,
-    lowStock, recent, cashiers, fastMoving: fast, slowMoving: slow,
+    lowStock, recent, cashiers, fastMoving: fast, slowMoving: slow, expiry: await expiryAlerts(branchId),
   };
 };

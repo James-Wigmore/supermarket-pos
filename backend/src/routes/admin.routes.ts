@@ -22,8 +22,9 @@ adminRouter.get('/dashboard', authorize(P.DASHBOARD_READ), validate({ query: bra
 const reportParams = z.object({ name: z.enum(REPORT_NAMES) });
 const reportQuery = dateRange.extend({
   branchId: id.optional(),
-  groupBy: z.string().optional(),
-  window: z.string().optional(),
+  groupBy: z.enum(['day', 'week', 'month', 'product', 'category', 'cashier', 'branch', 'payment']).optional(),
+  window: z.enum(['expired', 'today', '7', '30', 'all']).optional(),
+  reason: z.string().trim().max(100).optional(),
   format: z.enum(EXPORT_FORMATS).default('json'),
 });
 

@@ -13,6 +13,7 @@ export const settingsSchema = z.object({
   loyalty: z.object({ enabled: z.boolean(), unitAmount: z.number().positive() }),
   receipt: z.object({ storeName: z.string().min(1), header: z.string(), footer: z.string() }),
   expiryAlertDays: z.number().int().min(1).max(365),
+  twoFactorRequiredRoles: z.array(z.enum(Role)).default(['SUPER_ADMIN', 'MANAGER']),
 });
 
 export type Settings = z.infer<typeof settingsSchema>;
@@ -26,6 +27,7 @@ export const DEFAULT_SETTINGS: Settings = {
   loyalty: { enabled: false, unitAmount: 1000 },
   receipt: { storeName: 'Supermarket', header: '', footer: 'Thank you for shopping with us' },
   expiryAlertDays: 30,
+  twoFactorRequiredRoles: ['SUPER_ADMIN', 'MANAGER'],
 };
 
 let cache: { value: Settings; at: number } | null = null;

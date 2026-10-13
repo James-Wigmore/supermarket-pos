@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { Role } from '@prisma/client';
+import * as OTPAuth from 'otpauth';
 import request from 'supertest';
 import { createApp } from '../src/app';
 import { prisma, transact } from '../src/lib/prisma';
+import { DEFAULT_SETTINGS, saveSettings } from '../src/lib/settings';
 import { resetApprovalLocks } from '../src/services/approval.service';
 import { hashPassword } from '../src/services/auth.service';
 import { createProduct } from '../src/services/product.service';
@@ -16,11 +18,14 @@ export const PASSWORD = 'Password123!';
 const TABLES = [
   'ReturnItem', 'Return', 'Payment', 'SaleItem', 'Sale', 'HeldSale', 'CashierSession', 'Register', 'StockMovement',
   'ProductBatch', 'StockLevel', 'PurchaseItem', 'Purchase', 'SupplierPayment', 'SupplierPrice', 'Promotion', 'PriceHistory',
-  'Barcode', 'ExternalProductCache', 'Product', 'Category', 'Supplier', 'Customer', 'Expense', 'Setting', 'Counter', 'SyncState', 'SyncLog', '"User"', 'Branch',
+  'Barcode', 'ExternalProductCache', 'Product', 'Category', 'Supplier', 'Customer', 'Expense', 'Setting', 'Counter',
+  'SyncState', 'SyncLog', 'User', 'Branch',
 ];
 
 export const resetDb = async () => {
-  for (const table of TABLES) await prisma.$executeRawUnsafe(`DELETE FROM ${table}`);
+  for (const table of TABLES) {
+    await prisma.$executeRawUnsafe(`DELETE FROM "${table}"`);
+  }
   resetApprovalLocks();
 };
 
@@ -38,8 +43,12 @@ export const createUserIn = async (role: Role, branchId: string | null, tag = ''
   return { id: user.id, email, token: await login(email), actor: { id: user.id, name: user.name, email, role, branchId } as Actor };
 };
 
+/** Two-factor is required for admins and managers by default; most tests sign users in with a password only. */
+export const NO_2FA = { ...DEFAULT_SETTINGS, twoFactorRequiredRoles: [] };
+
 export const createWorld = async () => {
   await resetDb();
+  await saveSettings(NO_2FA);
   const branch = await prisma.branch.create({ data: { code: 'MAIN', name: 'Main' } });
   const other = await prisma.branch.create({ data: { code: 'OTHER', name: 'Other' } });
   const users = {} as Users;
@@ -89,3 +98,16 @@ export const openShift = async (world: Awaited<ReturnType<typeof createWorld>>, 
 export const sellBody = (sessionId: string, items: object[], payments: object[], extra: object = {}) => ({
   clientId: randomUUID(), sessionId, items, payments, ...extra,
 });
+
+/** The code an authenticator app would show right now (uses the clock, so fake timers can move it). */
+export const codeFor = (secret: string) =>
+  new OTPAuth.TOTP({ algorithm: 'SHA1', digits: 6, period: 30, secret: OTPAuth.Secret.fromBase32(secret) }).generate();
+
+export const loginRaw = (email: string, password = PASSWORD) => request(app).post('/api/auth/login').send({ email, password });
+
+/** Completes the enrolment a login asked for ({ nextStep: 'setup' }); returns the session and the authenticator secret. */
+export const enrol = async (setupToken: string) => {
+  const started = await request(app).post('/api/auth/2fa/setup').send({ setupToken });
+  const confirmed = await request(app).post('/api/auth/2fa/confirm').send({ setupToken, code: codeFor(started.body.secret) });
+  return { secret: started.body.secret as string, session: confirmed.body, status: confirmed.status };
+};

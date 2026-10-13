@@ -55,6 +55,7 @@ const fetchProvider = async (barcode: string) => {
   const response = await fetch(url, {
     headers: { Accept: 'application/json', ...(env.BARCODE_LOOKUP_API_KEY ? { user_key: env.BARCODE_LOOKUP_API_KEY } : {}) },
     signal: AbortSignal.timeout(env.BARCODE_LOOKUP_TIMEOUT_MS),
+    redirect: 'error',
   });
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`Barcode service responded ${response.status}`);
@@ -67,6 +68,8 @@ const fetchProvider = async (barcode: string) => {
  * (staff can always create the product manually).
  */
 export const lookupExternalProduct = async (barcode: string) => {
+  // Only EAN/UPC style codes are sent to the online service; internal or odd codes never are.
+  if (!/^\d{6,14}$/.test(barcode)) return { suggestion: null, failed: false };
   const cached = await prisma.externalProductCache.findUnique({ where: { barcode } });
   if (cached && Date.now() - cached.fetchedAt.getTime() < CACHE_TTL_MS) {
     return { suggestion: cached.data as unknown as ProductSuggestion, failed: false };

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { currencyCode, label } from '../lib/format';
 import { loadSettings } from '../lib/queries';
+import { SecurityDialog } from './SecurityDialog';
 import { StatusPill } from './StatusPill';
 
 interface NavItem { to: string; label: string; any: string[] }
@@ -29,6 +30,7 @@ const NAV: NavItem[] = [
 
 export const Layout = () => {
   const { session, canAny, logout } = useAuth();
+  const [changingPassword, setChangingPassword] = useState(false);
   const [open, setOpen] = useState(false);
   const { pathname } = useLocation();
   const items = NAV.filter((item) => canAny(...item.any));
@@ -64,7 +66,9 @@ export const Layout = () => {
             <div className="font-semibold">{session?.user.name}</div>
             <div className="text-xs text-muted">{label(session?.user.role ?? '')}</div>
           </div>
+          <button type="button" onClick={() => setChangingPassword(true)} className="rounded-field border border-line px-3 py-1.5 text-sm font-medium hover:bg-paper">Security</button>
           <button type="button" onClick={() => void logout()} className="rounded-field border border-line px-3 py-1.5 text-sm font-medium hover:bg-paper">Sign out</button>
+          {changingPassword && <SecurityDialog onClose={() => setChangingPassword(false)} />}
         </div>
       </header>
       <div className="flex min-h-0 flex-1">

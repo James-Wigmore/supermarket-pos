@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { userNames } from '../lib/lookups';
 import { prisma } from '../lib/prisma';
 import { branchFor } from '../lib/scope';
 import { COST_SQL, NET_REVENUE_SQL, PROFIT_SQL, TAX_SQL, branchSql, rawRows as rows } from '../lib/sql';
@@ -24,6 +25,7 @@ export interface ReportParams {
   branchId?: string;
   groupBy?: string;
   window?: string;
+  reason?: string;
 }
 
 interface Ctx {
@@ -41,7 +43,7 @@ const num = (key: string, label: string): Column => ({ key, label, type: 'number
 
 const completed = (c: Ctx) => Prisma.sql`s.status = 'COMPLETED' AND s."soldAt" >= ${c.from} AND s."soldAt" <= ${c.to} ${branchSql('s."branchId"', c.branchId)}`;
 
-interface PeriodRow {
+interface PeriodRow extends Record<string, unknown> {
   label: string;
   transactions: number;
   items: number;
@@ -122,6 +124,32 @@ const movements = async (c: Ctx): Promise<ReportData> => ({
   rows: (await listMovements(c.actor, { ...ALL_ROWS, branchId: c.branchId, from: c.from, to: c.to })).data
     .map((m) => ({ ...m, product: m.product.name })),
 });
+
+/** Written-off damaged stock, valued at cost price (never selling price). */
+const damagedStock = async (c: Ctx): Promise<ReportData> => {
+  const moves = await prisma.stockMovement.findMany({
+    where: {
+      type: 'DAMAGED', branchId: c.branchId, createdAt: { gte: c.from, lte: c.to },
+      ...(c.params.reason && { notes: { contains: c.params.reason } }),
+    },
+    orderBy: { createdAt: 'desc' },
+    include: { product: { select: { name: true, purchasePrice: true } }, branch: { select: { name: true } } },
+  });
+  const names = await userNames(moves.map((m) => m.userId));
+  return {
+    title: 'Damaged stock',
+    columns: [{ key: 'createdAt', label: 'Date', type: 'date' }, text('product', 'Product'), num('quantity', 'Quantity damaged'), money('unitCost', 'Unit cost'), money('lossValue', 'Loss value'), text('branch', 'Branch'), text('reason', 'Reason'), text('userName', 'Recorded by')],
+    rows: moves.map((m) => {
+      const quantity = m.quantity.abs();
+      // The cost recorded when the damage was booked; older records fall back to the product's current cost.
+      const unitCost = m.unitCost ?? m.product.purchasePrice;
+      return {
+        id: m.id, createdAt: m.createdAt, product: m.product.name, quantity: quantity.toNumber(), unitCost: unitCost.toNumber(),
+        lossValue: quantity.mul(unitCost).toDecimalPlaces(2).toNumber(), branch: m.branch.name, reason: m.notes ?? '', userName: names.get(m.userId) ?? '',
+      };
+    }),
+  };
+};
 
 const expiring = async (c: Ctx): Promise<ReportData> => ({
   title: 'Expiring products',
@@ -245,6 +273,7 @@ export const REPORTS = {
   'low-stock': stockReport('Low stock', 'low'),
   'out-of-stock': stockReport('Out of stock', 'out'),
   'stock-movements': movements,
+  'damaged-stock': damagedStock,
   expiring,
   'fast-moving': moving('fast'),
   'slow-moving': moving('slow'),

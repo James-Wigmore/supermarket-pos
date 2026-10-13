@@ -63,6 +63,10 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
 export const can = (role: Role, permission: Permission) => ROLE_PERMISSIONS[role].includes(permission);
 
 /** Roles a user may assign, by their own role. */
+/** Management hierarchy: a user can only be managed (password, 2FA) by someone ranked above them. */
+const ROLE_RANK: Record<Role, number> = { SUPER_ADMIN: 3, MANAGER: 2, CASHIER: 1, STOCK_OFFICER: 1, ACCOUNTANT: 1, AUDITOR: 1 };
+export const outranks = (manager: Role, target: Role) => ROLE_RANK[manager] > ROLE_RANK[target];
+
 export const ASSIGNABLE_ROLES: Record<Role, readonly Role[]> = {
   SUPER_ADMIN: Object.values(Role),
   MANAGER: [Role.CASHIER, Role.STOCK_OFFICER],

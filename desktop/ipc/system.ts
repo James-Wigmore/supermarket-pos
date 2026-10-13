@@ -39,7 +39,7 @@ export const registerSystemIpc = (backend: Backend, getWindow: () => BrowserWind
   handle('system:print', (event) => printPage(event.sender));
 
   handle('system:printers', async (event): Promise<PrinterInfo[]> =>
-    (await event.sender.getPrintersAsync()).map((p) => ({ name: p.name, isDefault: p.isDefault })));
+    (await event.sender.getPrintersAsync()).map((p) => ({ name: p.name, isDefault: Boolean((p as { isDefault?: boolean }).isDefault) })));
 
   handle('system:get-settings', admin(publicSettings));
 

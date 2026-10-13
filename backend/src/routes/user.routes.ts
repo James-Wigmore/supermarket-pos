@@ -3,7 +3,7 @@ import { P } from '../lib/permissions';
 import { authorize } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import * as users from '../services/user.service';
-import { createUserSchema, updateUserSchema } from '../validators/auth';
+import { createUserSchema, resetPasswordSchema, updateUserSchema } from '../validators/auth';
 import { branchQuery, idParams } from '../validators/common';
 
 export const userRouter = Router();
@@ -19,4 +19,14 @@ userRouter.post('/', validate({ body: createUserSchema }), async (req, res) => {
 
 userRouter.patch('/:id', validate({ params: idParams, body: updateUserSchema }), async (req, res) => {
   res.json(await users.updateUser(req.actor!, req.params.id as string, req.body));
+});
+
+userRouter.post('/:id/password', validate({ params: idParams, body: resetPasswordSchema }), async (req, res) => {
+  await users.resetPassword(req.actor!, req.params.id as string, req.body.password);
+  res.status(204).end();
+});
+
+userRouter.post('/:id/two-factor/reset', validate({ params: idParams }), async (req, res) => {
+  await users.resetTwoFactor(req.actor!, req.params.id as string);
+  res.status(204).end();
 });

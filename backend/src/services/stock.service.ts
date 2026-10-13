@@ -2,7 +2,7 @@ import type { MovementType } from '@prisma/client';
 import { conflict } from '../lib/errors';
 import { d, qty, type Decimal, type Num } from '../lib/money';
 import type { Tx } from '../lib/prisma';
-import { utcToday } from '../lib/time';
+import { businessToday } from '../lib/time';
 
 export interface StockParams {
   productId: string;
@@ -91,7 +91,7 @@ const allocateFefo = async (tx: Tx, p: StockParams, amount: Decimal, allowNegati
   const found = await tx.productBatch.findMany({
     where: {
       productId: p.productId, branchId: p.branchId, quantity: { gt: 0 },
-      OR: [{ expiryDate: null }, { expiryDate: { gte: utcToday() } }],
+      OR: [{ expiryDate: null }, { expiryDate: { gte: businessToday() } }],
     },
     orderBy: { createdAt: 'asc' },
   });

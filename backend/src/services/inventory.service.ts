@@ -7,7 +7,7 @@ import { prisma, transact } from '../lib/prisma';
 import { branchFor, requireBranch } from '../lib/scope';
 import { nextNumber } from '../lib/sequence';
 import { rawRows } from '../lib/sql';
-import { utcToday } from '../lib/time';
+import { businessToday } from '../lib/time';
 import type { Actor } from '../types';
 import type { AdjustStockInput, BatchQuery, MovementQuery, StockOverviewQuery, TransferStockInput } from '../validators/stock';
 import { addStock, removeStock } from './stock.service';
@@ -23,7 +23,7 @@ export const adjustStock = (actor: Actor, input: AdjustStockInput) =>
     if (!product) throw notFound('Product');
 
     const direction = DIRECTION[input.type] ?? input.direction!;
-    const params = { productId: product.id, branchId, userId: actor.id, type: input.type as MovementType, quantity: input.quantity, notes: input.notes, reference: 'ADJUSTMENT' };
+    const params = { productId: product.id, branchId, userId: actor.id, type: input.type as MovementType, quantity: input.quantity, unitCost: product.purchasePrice, notes: input.notes, reference: 'ADJUSTMENT' };
 
     if (direction === 'IN') {
       if (product.tracksExpiry && !input.batchId && !input.expiryDate) throw badRequest('Expiry date is required for this product');
@@ -113,7 +113,7 @@ export const listMovements = async (actor: Actor, q: MovementQuery) => {
 const addDays = (date: Date, days: number) => new Date(date.getTime() + days * 86_400_000);
 
 const expiryFilter = (window: BatchQuery['window']): Prisma.DateTimeNullableFilter => {
-  const today = utcToday();
+  const today = businessToday();
   switch (window) {
     case 'expired': return { lt: today };
     case 'today': return { gte: today, lt: addDays(today, 1) };

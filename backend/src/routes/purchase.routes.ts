@@ -23,7 +23,8 @@ purchaseRouter.post('/', write, validate({ body: createPurchaseSchema }), async 
 
 // Receiving mode: a scanned delivery is booked straight into stock after review.
 purchaseRouter.post('/deliveries', authorize(P.STOCK_RECEIVE), validate({ body: createPurchaseSchema }), async (req, res) => {
-  res.status(201).json(await purchases.receiveDelivery(req.actor!, req.body));
+  const delivery = await purchases.receiveDelivery(req.actor!, req.body);
+  res.status(delivery.duplicate ? 200 : 201).json(delivery);
 });
 
 purchaseRouter.get('/:id', read, validate({ params: idParams }), async (req, res) => {

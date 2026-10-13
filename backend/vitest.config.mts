@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import { TEST_DB_FILE } from './tests/db-path';
+import { TEST_DB_FILE } from './tests/db-path.js';
 
 export default defineConfig({
   test: {

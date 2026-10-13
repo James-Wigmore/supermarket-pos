@@ -34,6 +34,10 @@ interface CrudConfig {
   dateField?: string;
   stamp?: (actor: Actor) => object;
   deletable?: boolean;
+  /** Rejects (by throwing) before a create, or before an update when `id` is given. */
+  beforeSave?: (data: Record<string, unknown>, id?: string) => Promise<void>;
+  /** Rejects (by throwing) before a delete. */
+  beforeDelete?: (record: Record<string, unknown>) => Promise<void>;
 }
 
 const listQuery = pageQuery.extend({
@@ -91,6 +95,7 @@ export const crudRouter = (config: CrudConfig) => {
 
   router.post('/', authorize(config.write), validate({ body: config.createSchema }), async (req, res) => {
     const actor = req.actor!;
+    await config.beforeSave?.(req.body);
     const data = { ...req.body, ...config.stamp?.(actor) };
     if (config.branchScoped) data.branchId = requireBranch(actor, req.body.branchId);
     const created = (await delegate.create({ data })) as { id: string };
@@ -101,6 +106,7 @@ export const crudRouter = (config: CrudConfig) => {
   router.patch('/:id', authorize(config.write), validate({ params: idParams, body: config.updateSchema }), async (req, res) => {
     const actor = req.actor!;
     const before = await findOr404(config, actor, req.params.id as string);
+    await config.beforeSave?.(req.body, before.id as string);
     const updated = await delegate.update({ where: { id: before.id }, data: req.body });
     await audit(prisma, actor, { action: `${entity.toUpperCase()}_UPDATE`, entity, entityId: before.id as string, before, after: updated });
     res.json(updated);
@@ -109,6 +115,7 @@ export const crudRouter = (config: CrudConfig) => {
   if (config.deletable) {
     router.delete('/:id', authorize(config.write), validate({ params: idParams }), async (req, res) => {
       const before = await findOr404(config, req.actor!, req.params.id as string);
+      await config.beforeDelete?.(before);
       await delegate.delete({ where: { id: before.id } });
       await audit(prisma, req.actor!, { action: `${entity.toUpperCase()}_DELETE`, entity, entityId: before.id as string, before });
       res.status(204).end();

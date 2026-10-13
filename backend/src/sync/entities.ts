@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { prisma, type Tx } from '../lib/prisma';
+import { assertCategoryNameFree } from '../services/category.service';
 import { currentPrices } from '../services/pricing.service';
 import { toCell, type Cell, type Row } from './cells';
 
@@ -56,7 +57,7 @@ const categoryIdByName = async (tx: Tx, name: string) => {
 
 const productFields = {
   name: text(200).min(1), brand: optionalText(100), category: text(100), unit: text(20).transform((s) => s || 'pcs'),
-  purchasePrice: amount, sellingPrice: amount, taxRate: amount.pipe(z.number().max(100)), minStock: amount, maxStock: optionalAmount, isActive: flag,
+  purchasePrice: amount, sellingPrice: amount.pipe(z.number().positive()), taxRate: amount.pipe(z.number().max(100)), minStock: amount, maxStock: optionalAmount, isActive: flag,
 };
 const productUpdate = z.object(productFields);
 const productCreate = z.object({ ...productFields, sku: text(50).min(1), barcode: text(64) });
@@ -96,8 +97,14 @@ const PRODUCT: PullSpec = {
 const CATEGORY: PullSpec = {
   editable: ['name'],
   parse: schemaParser(z.object({ name: text(100).min(1) })),
-  update: async (tx, id, values) => void (await tx.category.update({ where: { id }, data: values as { name: string } })),
-  create: async (tx, values) => (await tx.category.create({ data: values as { name: string } })).id,
+  update: async (tx, id, values) => {
+    await assertCategoryNameFree(tx, (values as { name: string }).name, id);
+    await tx.category.update({ where: { id }, data: values as { name: string } });
+  },
+  create: async (tx, values) => {
+    await assertCategoryNameFree(tx, (values as { name: string }).name);
+    return (await tx.category.create({ data: values as { name: string } })).id;
+  },
 };
 
 const supplierSchema = z.object({

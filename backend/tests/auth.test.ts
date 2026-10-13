@@ -1,7 +1,7 @@
 import request from 'supertest';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../src/lib/prisma';
-import { PASSWORD, app, auth, createWorld, makeProduct } from './helpers';
+import { createUserIn, PASSWORD, app, auth, createWorld, makeProduct } from './helpers';
 
 let world: Awaited<ReturnType<typeof createWorld>>;
 beforeAll(async () => {
@@ -32,10 +32,11 @@ describe('authentication', () => {
   });
 
   it('invalidates tokens when the account is deactivated or the password changes', async () => {
-    const res = await request(app).post('/api/auth/change-password').set(auth(world.users.ACCOUNTANT.token))
+    const own = await createUserIn('MANAGER', world.branch.id, 'pw'); // managers may change their own password; staff below them may not
+    const res = await request(app).post('/api/auth/change-password').set(auth(own.token))
       .send({ currentPassword: PASSWORD, newPassword: 'AnotherPass456!' });
     expect(res.status).toBe(200);
-    expect((await request(app).get('/api/auth/me').set(auth(world.users.ACCOUNTANT.token))).status).toBe(401);
+    expect((await request(app).get('/api/auth/me').set(auth(own.token))).status).toBe(401);
     expect((await request(app).get('/api/auth/me').set(auth(res.body.token))).status).toBe(200);
 
     await prisma.user.update({ where: { id: world.users.AUDITOR.id }, data: { isActive: false } });

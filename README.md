@@ -244,6 +244,40 @@ Rejected sales are kept and shown on the Sales page, never silently dropped.
 Prisma parameterised queries, Helmet, strict CORS allow-list, rate limits (global + login), redacted logs, immutable audit log (database triggers reject UPDATE/DELETE/TRUNCATE),
 cost prices hidden from cashiers, spreadsheet-formula-safe exports. Branch isolation is enforced server-side for every branch-scoped resource.
 
+## 6a. Sign-in security: two-factor and password resets
+
+**Two-factor authentication (authenticator app).** After the password, users enter a 6-digit code from an app such as Google Authenticator,
+Microsoft Authenticator or Authy. It works fully **offline** (no SMS, no internet), which suits a till.
+
+* **Who must use it** is a setting (Settings → General → *Two-factor authentication*, super admin only). The default is **Super admin and Manager**.
+  People in a required role are walked through setup at their next sign-in (scan the QR code, enter a first code, save the 10 recovery codes).
+  Anyone else can turn it on for themselves under **Security** in the top bar.
+* Codes cannot be reused, and 5 wrong codes lock the account for 15 minutes. Each recovery code works once.
+* Authenticator secrets are stored **encrypted** (keyed from the app secret) and recovery codes only as keyed hashes. Neither is ever written to the
+  audit log or synchronised to Google Sheets. If a database is restored onto a different PC the stored secret can no longer be read, so the user is
+  simply asked to enrol again after a correct password (and this is audited).
+
+**Who can change passwords.** Passwords are controlled by rank, not by the user:
+
+| Action | Who |
+| --- | --- |
+| Reset the password or 2FA of cashiers, stock officers, accountants, auditors | **Manager** (own branch) or Super admin |
+| Reset the password or 2FA of a manager | Super admin |
+| Change **your own** password | Managers and Super admins only (a valid authenticator code is also needed if 2FA is on) |
+| Staff below manager | Cannot change their own password; they ask their manager |
+
+A reset signs that user out of every device. Resets and changes are audited (`PASSWORD_RESET`, `PASSWORD_CHANGE`, `TWO_FACTOR_RESET`, …).
+
+**Locked-out owner (lost phone and recovery codes).** A manager cannot reset a super admin, by design. On the PC that holds the database run:
+
+```bash
+cd backend
+RECOVER_EMAIL=owner@shop.com RECOVER_PASSWORD='a new passphrase' npm run auth:recover   # password is optional
+```
+
+This turns two-factor off for that account, optionally sets a new password, signs the user out everywhere and records `ACCOUNT_RECOVERY` in the audit log.
+It needs file access to the database, so it cannot be used remotely through the app.
+
 ## 7. Known limitations (read before go-live)
 
 * **The Windows installer and Electron app were assembled without being run in the development environment.** Do the acceptance checklist above on a real PC before trusting it with a live shop.

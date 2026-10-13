@@ -3,7 +3,7 @@ import { audit } from '../lib/audit';
 import { conflict, notFound } from '../lib/errors';
 import { d, money, ZERO, type Decimal } from '../lib/money';
 import { pageArgs, pageResult, type PageQuery } from '../lib/pagination';
-import { prisma, transact, type Db } from '../lib/prisma';
+import { prisma, transact, type Db, type Tx } from '../lib/prisma';
 import { can, P } from '../lib/permissions';
 import { branchFor } from '../lib/scope';
 import { nextInternalBarcode, nextNumber } from '../lib/sequence';
@@ -103,13 +103,29 @@ export const createProduct = (actor: Actor, input: CreateProductInput) =>
     return product;
   });
 
-export const updateProduct = async (actor: Actor, id: string, input: UpdateProductInput) => {
-  const before = await prisma.product.findUnique({ where: { id } });
-  if (!before) throw notFound('Product');
-  const product = await prisma.product.update({ where: { id }, data: input, include: productInclude });
-  await audit(prisma, actor, { action: 'PRODUCT_UPDATE', entity: 'Product', entityId: id, before, after: input });
-  return product;
+/** Stock that existed before expiry tracking was switched on goes into an undated LEGACY batch (sold last under FEFO). */
+const moveStockIntoLegacyBatch = async (tx: Tx, productId: string) => {
+  for (const { branchId, quantity } of await tx.stockLevel.findMany({ where: { productId, quantity: { gt: 0 } } })) {
+    const batched = await tx.productBatch.aggregate({ where: { productId, branchId }, _sum: { quantity: true } });
+    const untracked = d(quantity).minus(d(batched._sum.quantity));
+    if (untracked.lte(0)) continue;
+    await tx.productBatch.upsert({
+      where: { productId_branchId_batchNo: { productId, branchId, batchNo: 'LEGACY' } },
+      create: { productId, branchId, batchNo: 'LEGACY', quantity: untracked },
+      update: { quantity: { increment: untracked } },
+    });
+  }
 };
+
+export const updateProduct = (actor: Actor, id: string, input: UpdateProductInput) =>
+  transact(async (tx) => {
+    const before = await tx.product.findUnique({ where: { id } });
+    if (!before) throw notFound('Product');
+    const product = await tx.product.update({ where: { id }, data: input, include: productInclude });
+    if (input.tracksExpiry && !before.tracksExpiry) await moveStockIntoLegacyBatch(tx, id);
+    await audit(tx, actor, { action: 'PRODUCT_UPDATE', entity: 'Product', entityId: id, before, after: input });
+    return product;
+  });
 
 /** Deletes a product that was never used; otherwise it is deactivated to keep history intact. */
 export const deleteProduct = (actor: Actor, id: string) =>

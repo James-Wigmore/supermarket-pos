@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { BranchField } from '../components/BranchField';
 import { Badge, Button, DataTable, ErrorNote, Input, Modal, PageHeader, Pagination, Panel, Select, useToast } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { date, dateTime, fmtNum, label, money, num } from '../lib/format';
 import { useDebounced } from '../lib/hooks';
-import { usePage, useRefList } from '../lib/queries';
+import { useBranchChoice, usePage, useRefList } from '../lib/queries';
 import type { Named, Product, Supplier } from '../lib/types';
 
 interface PurchaseRow { id: string; number: string; status: 'ORDERED' | 'RECEIVED' | 'CANCELLED'; total: string; createdAt: string; supplier: Named }
@@ -18,20 +19,22 @@ const NewOrder = ({ onClose }: { onClose: () => void }) => {
   const client = useQueryClient();
   const toast = useToast();
   const suppliers = useRefList<Supplier>('/suppliers');
+  const branch = useBranchChoice();
   const [supplierId, setSupplierId] = useState('');
   const [search, setSearch] = useState('');
   const [lines, setLines] = useState<{ productId: string; name: string; quantity: string; unitCost: string }[]>([]);
   const q = useDebounced(search);
   const found = useQuery({ queryKey: ['po-search', q], queryFn: () => api<{ data: Product[] }>('/products', { query: { search: q, pageSize: 6, isActive: true } }), enabled: q.length >= 2 });
   const save = useMutation({
-    mutationFn: () => api('/purchases', { method: 'POST', body: { supplierId, items: lines.map((l) => ({ productId: l.productId, quantity: Number(l.quantity), unitCost: Number(l.unitCost) })) } }),
+    mutationFn: () => api('/purchases', { method: 'POST', body: { supplierId, branchId: branch.branchId || undefined, items: lines.map((l) => ({ productId: l.productId, quantity: Number(l.quantity), unitCost: Number(l.unitCost) })) } }),
     onSuccess: () => { toast('success', 'Purchase order created'); void client.invalidateQueries({ queryKey: ['purchases'] }); onClose(); },
   });
-  const valid = supplierId && lines.length > 0 && lines.every((l) => Number(l.quantity) > 0 && l.unitCost !== '');
+  const valid = supplierId && !branch.missing && lines.length > 0 && lines.every((l) => Number(l.quantity) > 0 && l.unitCost !== '');
   const edit = (i: number, patch: Partial<(typeof lines)[number]>) => setLines((l) => l.map((x, n) => (n === i ? { ...x, ...patch } : x)));
   return (
     <Modal open onClose={onClose} title="New purchase order" width="lg" footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={() => save.mutate()} disabled={!valid} loading={save.isPending}>Create order</Button></>}>
       <div className="space-y-4">
+        <BranchField choice={branch} />
         <Select label="Supplier" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}><option value="">Select…</option>{suppliers.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select>
         <div className="relative">
           <Input label="Add product" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name, SKU or barcode" />

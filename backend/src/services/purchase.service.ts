@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { audit } from '../lib/audit';
 import { badRequest, conflict, notFound } from '../lib/errors';
 import { d, money, sum } from '../lib/money';
@@ -25,6 +25,7 @@ const createRecord = async (tx: Tx, actor: Actor, input: CreatePurchaseInput) =>
   const purchase = await tx.purchase.create({
     data: {
       number: await nextNumber(tx, 'PO'),
+      clientRef: input.clientRef,
       supplierId: supplier.id,
       branchId,
       status: 'ORDERED',
@@ -102,7 +103,21 @@ export const receivePurchase = (actor: Actor, id: string, lines: ReceiveLineInpu
   transact((tx) => receiveLines(tx, actor, id, lines));
 
 /** Receiving mode: a whole delivery is booked in one transaction, without a prior order. */
-export const receiveDelivery = (actor: Actor, input: CreatePurchaseInput) =>
+/** Receiving mode books a whole delivery at once; repeating the same clientRef returns the original instead of receiving twice. */
+export const receiveDelivery = async (actor: Actor, input: CreatePurchaseInput) => {
+  const find = () => (input.clientRef ? prisma.purchase.findUnique({ where: { clientRef: input.clientRef }, include: purchaseInclude }) : null);
+  const existing = await find();
+  if (existing) return { ...existing, duplicate: true };
+  try {
+    return { ...(await receiveDeliveryTx(actor, input)), duplicate: false };
+  } catch (err) {
+    const raced = err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002' ? await find() : null;
+    if (raced) return { ...raced, duplicate: true };
+    throw err;
+  }
+};
+
+const receiveDeliveryTx = (actor: Actor, input: CreatePurchaseInput) =>
   transact(async (tx) => {
     const { purchase, items } = await createRecord(tx, actor, input);
     const lines = items.map((item, index) => ({

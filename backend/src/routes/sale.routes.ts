@@ -47,6 +47,6 @@ saleRouter.get('/:id/receipt.pdf', authorize(P.SALE_READ), validate({ params: id
   res.type('application/pdf').send(await receiptPdf(await sales.getReceipt(req.actor!, req.params.id as string)));
 });
 
-saleRouter.post('/:id/void', authorize(P.SALE_READ), validate({ params: idParams, body: voidSaleSchema }), async (req, res) => {
+saleRouter.post('/:id/void', authorize(P.SALE_CREATE), validate({ params: idParams, body: voidSaleSchema }), async (req, res) => {
   res.json(await sales.voidSale(req.actor!, req.params.id as string, req.body.reason, req.body.approval));
 });

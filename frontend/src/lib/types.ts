@@ -11,6 +11,7 @@ export interface SessionUser {
   user: { id: string; name: string; email: string; role: Role; branchId: string | null };
   branch: { id: string; name: string; code: string } | null;
   permissions: string[];
+  twoFactor: { enabled: boolean; required: boolean };
 }
 
 export interface Barcode { id: string; code: string; isPrimary: boolean; isInternal: boolean }
@@ -71,6 +72,7 @@ export interface Settings {
   loyalty: { enabled: boolean; unitAmount: number };
   receipt: { storeName: string; header: string; footer: string };
   expiryAlertDays: number;
+  twoFactorRequiredRoles: Role[];
 }
 
 export interface Approval { email: string; password: string }

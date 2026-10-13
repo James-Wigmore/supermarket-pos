@@ -48,8 +48,10 @@ export const Setup = () => {
         },
       });
       client.setQueryData(['setup'], { needsSetup: false });
-      navigate('/settings?tab=sheets', { replace: true }); // next: connect Google Sheets (Windows app)
-      await login(f.email.trim(), f.password);
+      const step = await login(f.email.trim(), f.password);
+      // the owner's role requires two-factor, so enrolment comes before the next step (connect Google Sheets, Windows app)
+      if (step.kind === 'done') navigate('/settings?tab=sheets', { replace: true });
+      else navigate('/login', { replace: true, state: { step } });
     } catch (err) {
       setError(err);
     } finally {
