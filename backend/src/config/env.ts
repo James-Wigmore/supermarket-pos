@@ -1,7 +1,9 @@
+
 import 'dotenv/config';
 import { z } from 'zod';
 
-const list = (value: string) => value.split(',').map((item) => item.trim()).filter(Boolean);
+const list = (value: string) =>
+  value.split(',').map((item) => item.trim()).filter(Boolean);
 
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -12,17 +14,38 @@ const schema = z.object({
   TIMEZONE: z.string().default('Africa/Kampala'),
   BCRYPT_ROUNDS: z.coerce.number().int().min(4).max(15).default(12),
   CORS_ORIGINS: z.string().default('http://localhost:5173').transform(list),
-  BARCODE_LOOKUP_PROVIDER: z.enum(['openfoodfacts', 'upcitemdb', 'none']).default('openfoodfacts'),
+
+  BARCODE_LOOKUP_PROVIDER: z
+    .enum(['openfoodfacts', 'upcitemdb', 'none'])
+    .default('openfoodfacts'),
   BARCODE_LOOKUP_URL: z.url().optional(),
   BARCODE_LOOKUP_API_KEY: z.string().optional(),
   BARCODE_LOOKUP_TIMEOUT_MS: z.coerce.number().int().positive().default(3000),
+
+  APP_BASE_URL: z.url().default('http://localhost:5173'),
+  EMAIL_FROM: z.email().optional(),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_SECURE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
 });
 
 const parsed = schema.safeParse(process.env);
+
 if (!parsed.success) {
-  throw new Error(`Invalid environment configuration:\n${z.prettifyError(parsed.error)}`);
+  throw new Error(
+    `Invalid environment configuration:\n${z.prettifyError(parsed.error)}`,
+  );
 }
-if (parsed.data.NODE_ENV === 'production' && parsed.data.JWT_SECRET.includes('dev-only')) {
+
+if (
+  parsed.data.NODE_ENV === 'production' &&
+  parsed.data.JWT_SECRET.includes('dev-only')
+) {
   throw new Error('JWT_SECRET must be replaced with a production secret');
 }
 

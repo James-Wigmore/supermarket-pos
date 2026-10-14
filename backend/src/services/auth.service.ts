@@ -1,3 +1,10 @@
+import {
+  requestLoginApproval,
+  approveLoginToken,
+  claimApprovedLogin,
+  rejectLoginToken,
+} from './login-approval.service';
+
 import bcrypt from 'bcryptjs';
 import type { Role, User } from '@prisma/client';
 import { env } from '../config/env';
@@ -10,6 +17,7 @@ import { getSettings } from '../lib/settings';
 import { signToken, userFromScopedToken } from '../middleware/auth';
 import type { Actor } from '../types';
 import { checkSecondFactor, matchStep, newRecoveryCodes, newSecret, twoFactorLimiter } from './twofactor.service';
+import { sendEmail } from './email.service';
 
 // Compared against when the user does not exist, so timing does not reveal valid emails.
 const DUMMY_HASH = bcrypt.hashSync('not-a-real-password', env.BCRYPT_ROUNDS);
@@ -56,19 +64,53 @@ const dropUnreadableSecret = async (user: User) => {
 };
 
 /** Step 1 of signing in. Returns a session, or tells the client which second step is needed. */
-export const login = async (email: string, password: string, ctx: Ctx) => {
+
+export const login = async (
+  email: string,
+  password: string,
+  ctx: Ctx,
+) => {
   const found = await prisma.user.findUnique({ where: { email } });
-  const valid = await bcrypt.compare(password, found?.passwordHash ?? DUMMY_HASH);
+  const valid = await bcrypt.compare(
+    password,
+    found?.passwordHash ?? DUMMY_HASH,
+  );
+
   if (!found || !valid || !found.isActive) {
-    // Unknown emails are not logged: anyone could otherwise grow the append-only audit table.
-    if (found) await audit(prisma, null, { action: 'LOGIN_FAILED', entity: 'User', entityId: found.id, after: { email, ...ctx } });
+    if (found) {
+      await audit(prisma, null, {
+        action: 'LOGIN_FAILED',
+        entity: 'User',
+        entityId: found.id,
+        after: { email, ...ctx },
+      });
+    }
+
     throw unauthorized('Invalid email or password');
   }
+
   const user = await dropUnreadableSecret(found);
-  if (user.twoFactorEnabled) return { nextStep: 'code' as const, challengeToken: signToken(user, 'challenge') };
-  if (await isRequiredFor(user.role)) return { nextStep: 'setup' as const, setupToken: signToken(user, 'setup') };
-  return finishLogin(user, ctx, 'password');
+
+  if (!user.twoFactorEnabled && await isRequiredFor(user.role)) {
+    return {
+      nextStep: 'setup' as const,
+      setupToken: signToken(user, 'setup'),
+    };
+  }
+
+  return requestLoginApproval({
+    userId: user.id,
+    email: user.email,
+    approvalUrl: new URL(
+      '/login-approval',
+      env.APP_BASE_URL,
+    ).toString(),
+    context: ctx,
+    sendEmail,
+  });
 };
+
+
 
 /** Step 2: the authenticator (or a one-time recovery) code. */
 export const verifyLogin = async (challengeToken: string, code: string, ctx: Ctx) => {
@@ -83,6 +125,25 @@ export const verifyLogin = async (challengeToken: string, code: string, ctx: Ctx
   twoFactorLimiter.clear(user.id);
   return finishLogin(await prisma.user.update({ where: { id: user.id }, data: check.data }), ctx, check.method);
 };
+
+
+export const confirmLoginApproval = async (token: string) =>
+  approveLoginToken(token);
+
+export const completeApprovedLogin = async (requestToken: string) => {
+  const claimed = await claimApprovedLogin(requestToken);
+
+  if (!claimed) {
+    return { nextStep: 'emailApprovalPending' as const };
+  }
+
+  return finishLogin(
+    claimed.user,
+    claimed.context,
+    'password',
+  );
+};
+
 
 export const logout = (actor: Actor) => audit(prisma, actor, { action: 'LOGOUT', entity: 'User', entityId: actor.id });
 
@@ -155,3 +216,7 @@ export const disableTwoFactor = async (actor: Actor, password: string, code: str
 };
 
 export const clearTwoFactorData = CLEARED;
+
+export const rejectLoginApproval = async (token: string) => {
+  return rejectLoginToken(token);
+};

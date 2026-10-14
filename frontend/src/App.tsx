@@ -8,6 +8,10 @@ import { useAuth } from './lib/auth';
 import { Login } from './pages/Login';
 import { Setup } from './pages/Setup';
 import { Pos } from './pages/pos/Pos';
+import { LoginApproval } from './pages/LoginApproval';
+import { useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+
 
 const Audit = lazy(() => import('./pages/Audit').then((m) => ({ default: m.Audit })));
 const Customers = lazy(() => import('./pages/Customers').then((m) => ({ default: m.Customers })));
@@ -40,13 +44,22 @@ const page = (any: string[], node: ReactNode) => <Guard any={any}>{node}</Guard>
 
 export const App = () => {
   const { session, loading } = useAuth();
+  const location = useLocation();
   const setup = useQuery({ queryKey: ['setup'], queryFn: () => api<{ needsSetup: boolean }>('/setup/status'), enabled: !session });
   if (loading || (!session && setup.isLoading)) return <Loading />;
-  if (!session && setup.data?.needsSetup) return <Setup />;
+
+  if (
+  !session &&
+  setup.data?.needsSetup &&
+  location.pathname !== '/login-approval'
+) {
+  return <Setup />;
+}
   return (
     <Suspense fallback={<Loading />}>
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/login-approval" element={<LoginApproval />} />
       {session ? (
         <Route element={<Layout />}>
           <Route index element={<Home />} />

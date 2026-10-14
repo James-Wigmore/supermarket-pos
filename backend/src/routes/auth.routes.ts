@@ -4,6 +4,8 @@ import { authenticate, authenticateOrSetup } from '../middleware/auth';
 import { loginLimiter } from '../middleware/rateLimit';
 import { validate } from '../middleware/validate';
 import { changePasswordSchema, confirmSetupSchema, disableTwoFactorSchema, loginSchema, setupSchema, verifyLoginSchema } from '../validators/auth';
+import { z } from 'zod';
+
 
 export const authRouter = Router();
 
@@ -15,6 +17,40 @@ authRouter.post('/login', loginLimiter, validate({ body: loginSchema }), async (
 authRouter.post('/login/verify', loginLimiter, validate({ body: verifyLoginSchema }), async (req, res) => {
   res.json(await auth.verifyLogin(req.body.challengeToken, req.body.code, { ip: req.ip, userAgent: req.headers['user-agent'] }));
 });
+
+
+authRouter.post(
+  '/login/approval/confirm',
+  loginLimiter,
+  validate({
+    body: z.object({
+      token: z.string().min(1),
+    }),
+  }),
+  async (req, res) => {
+    res.json(
+      await auth.confirmLoginApproval(req.body.token),
+    );
+  },
+);
+
+authRouter.post(
+  '/login/approval/complete',
+  loginLimiter,
+  validate({
+    body: z.object({
+      requestToken: z.string().min(1),
+    }),
+  }),
+  async (req, res) => {
+    res.json(
+      await auth.completeApprovedLogin(
+        req.body.requestToken,
+      ),
+    );
+  },
+);
+
 
 authRouter.get('/me', authenticate, async (req, res) => {
   res.json(await auth.sessionInfo(req.actor!));
@@ -38,6 +74,23 @@ authRouter.post('/2fa/setup', authenticateOrSetup, validate({ body: setupSchema 
 authRouter.post('/2fa/confirm', authenticateOrSetup, validate({ body: confirmSetupSchema }), async (req, res) => {
   res.json(await auth.confirmTwoFactorSetup(req.actor!, req.body.code, { ip: req.ip, userAgent: req.headers['user-agent'] }, Boolean(req.setupFlow)));
 });
+
+
+authRouter.post(
+  '/login/approval/reject',
+  loginLimiter,
+  validate({
+    body: z.object({
+      token: z.string().min(1),
+    }),
+  }),
+  async (req, res) => {
+    res.json(
+      await auth.rejectLoginApproval(req.body.token),
+    );
+  },
+);
+
 
 authRouter.post('/2fa/disable', authenticate, validate({ body: disableTwoFactorSchema }), async (req, res) => {
   await auth.disableTwoFactor(req.actor!, req.body.password, req.body.code);

@@ -580,3 +580,20 @@ model SyncLog {
   @@index([level, resolution])
   @@index([pushedAt])
 }
+
+model LoginApproval {
+  id               String    @id @default(cuid())
+  userId           String
+  tokenHash        String    @unique
+  requestTokenHash String    @unique
+  status           String    @default("PENDING")
+  expiresAt        DateTime
+  approvedAt       DateTime?
+  consumedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  ip               String?
+  userAgent        String?
+
+  @@index([userId, status])
+  @@index([expiresAt])
+}
