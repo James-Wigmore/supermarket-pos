@@ -91,10 +91,8 @@ model User {
   isActive     Boolean  @default(true)
   lastLoginAt  DateTime?
   tokenVersion Int      @default(0)
-  twoFactorEnabled  Boolean @default(false)
-  twoFactorSecret   String?
-  twoFactorRecovery String?
-  twoFactorLastStep Int?
+  emailApprovalEnabled Boolean @default(false)
+  loginApprovals LoginApproval[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -581,19 +579,35 @@ model SyncLog {
   @@index([pushedAt])
 }
 
+enum LoginApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  CANCELLED
+  COMPLETED
+  FAILED
+}
+
+/// One email-approval attempt for a sign-in. Only SHA-256 hashes of the three random tokens are stored.
 model LoginApproval {
-  id               String    @id @default(cuid())
+  id               String              @id @default(uuid())
   userId           String
-  tokenHash        String    @unique
-  requestTokenHash String    @unique
-  status           String    @default("PENDING")
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sentTo           String
+  approveTokenHash String              @unique
+  rejectTokenHash  String              @unique
+  pollTokenHash    String              @unique
+  status           LoginApprovalStatus @default(PENDING)
   expiresAt        DateTime
-  approvedAt       DateTime?
-  consumedAt       DateTime?
-  createdAt        DateTime  @default(now())
+  decidedAt        DateTime?
+  claimUntil       DateTime?
+  claimedAt        DateTime?
+  tokenVersion     Int
   ip               String?
   userAgent        String?
+  createdAt        DateTime            @default(now())
 
   @@index([userId, status])
-  @@index([expiresAt])
+  @@index([status, expiresAt])
 }

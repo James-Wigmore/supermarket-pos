@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useAuth } from './auth';
 import { api } from './api';
 import { setCurrency } from './format';
-import type { Page, Settings } from './types';
+import type { Page, SetupStatus, Settings } from './types';
 
 type Query = Record<string, string | number | boolean | undefined | null>;
 
@@ -30,6 +30,8 @@ export const useBranchChoice = () => {
   return { isAdmin, branches: active, branchId, name: active.find((b) => b.id === branchId)?.name, setBranchId: setChosen, missing: isAdmin && !branchId };
 };
 export type BranchChoice = ReturnType<typeof useBranchChoice>;
+
+export const loadSetupStatus = () => api<SetupStatus>('/setup/status');
 
 /** Store settings. Also tells the formatters which currency to show. */
 export const loadSettings = async () => {

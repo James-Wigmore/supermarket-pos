@@ -15,20 +15,6 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 const fill = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
 const submit = () => screen.getByRole('button', { name: 'Change password' }) as HTMLButtonElement;
 
-describe('change own password with two-factor on', () => {
-  it('also needs an authenticator code and sends it', async () => {
-    const onClose = vi.fn();
-    renderApp(<ChangePassword needsCode onClose={onClose} />);
-    fill('Current password', 'old-pass'); fill('New password', 'a-better-pass'); fill('Repeat new password', 'a-better-pass');
-    expect(submit().disabled).toBe(true);
-    fill('Authenticator code', '123456');
-    expect(submit().disabled).toBe(false);
-    fireEvent.click(submit());
-    await waitFor(() => expect(onClose).toHaveBeenCalled());
-    expect(calls.find((c) => c.url === '/auth/change-password')!.body).toEqual({ currentPassword: 'old-pass', newPassword: 'a-better-pass', code: '123456' });
-  });
-});
-
 describe('change own password', () => {
   it('stays disabled until the new password is long enough and repeated correctly', () => {
     renderApp(<ChangePassword onClose={() => undefined} />);

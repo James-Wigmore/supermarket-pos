@@ -71,6 +71,11 @@ export const Layout = () => {
           {changingPassword && <SecurityDialog onClose={() => setChangingPassword(false)} />}
         </div>
       </header>
+      {session && !session.loginApproval.configured && (
+        <div role="alert" className="border-b border-line bg-warn-soft px-4 py-1.5 text-sm font-medium text-warn">
+          Email sign-in approval is OFF on this server. Everyone signs in with a password only.{canAny('settings:manage') ? ' Set up email (see the README) to turn it on.' : ' Tell your administrator.'}
+        </div>
+      )}
       <div className="flex min-h-0 flex-1">
         <aside className={`${compact ? 'hidden' : 'hidden lg:block'} w-56 shrink-0 overflow-y-auto border-r border-line bg-white p-3`}>{links}</aside>
         {open && <div className="absolute inset-x-0 top-[53px] z-40 border-b border-line bg-white p-3 shadow-lg lg:hidden">{links}</div>}

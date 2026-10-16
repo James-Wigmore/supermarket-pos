@@ -241,42 +241,73 @@ same transaction with a guarded decrement, so negative stock is impossible unles
 Rejected sales are kept and shown on the Sales page, never silently dropped.
 
 **Security.** bcrypt hashes, short-lived JWTs invalidated by password change/deactivation (`tokenVersion`), backend permission checks on every route, Zod validation,
-Prisma parameterised queries, Helmet, strict CORS allow-list, rate limits (global + login), redacted logs, immutable audit log (database triggers reject UPDATE/DELETE/TRUNCATE),
+Prisma parameterised queries, Helmet, strict CORS allow-list, rate limits (global, login, approval emails and links), redacted logs, immutable audit log (database triggers reject UPDATE/DELETE/TRUNCATE),
 cost prices hidden from cashiers, spreadsheet-formula-safe exports. Branch isolation is enforced server-side for every branch-scoped resource.
 
-## 6a. Sign-in security: two-factor and password resets
+## 6a. Sign-in security: email login approval and password resets
 
-**Two-factor authentication (authenticator app).** After the password, users enter a 6-digit code from an app such as Google Authenticator,
-Microsoft Authenticator or Authy. It works fully **offline** (no SMS, no internet), which suits a till.
+**Email login approval.** After a correct password the till shows a waiting screen and the server emails the user's registered address with two links,
+**Approve Login** and **Reject Login**. The sign-in only completes once the emailed link is approved, and only on the browser that asked for it.
 
-* **Who must use it** is a setting (Settings → General → *Two-factor authentication*, super admin only). The default is **Super admin and Manager**.
-  People in a required role are walked through setup at their next sign-in (scan the QR code, enter a first code, save the 10 recovery codes).
-  Anyone else can turn it on for themselves under **Security** in the top bar.
-* Codes cannot be reused, and 5 wrong codes lock the account for 15 minutes. Each recovery code works once.
-* Authenticator secrets are stored **encrypted** (keyed from the app secret) and recovery codes only as keyed hashes. Neither is ever written to the
-  audit log or synchronised to Google Sheets. If a database is restored onto a different PC the stored secret can no longer be read, so the user is
-  simply asked to enrol again after a correct password (and this is audited).
+* **Who must use it** is a setting (Settings → General → *Email login approval*, super admin only). The default is **Super admin and Manager**.
+  Anyone else can turn it on for themselves under **Security** in the top bar (it needs their password and a test email that must be delivered).
+* Each request lives **5 minutes**. Once approved, the waiting browser has a further **2 minutes** to collect its session. A request is dead after approval,
+  rejection, expiry or cancellation: a link can be used once, a rejected or expired request can never be approved later, and a newer sign-in cancels the older one.
+* The links open a page **hosted by the backend** (`PUBLIC_BASE_URL/api/auth/approve?token=…`) that shows who/when/where and asks for one more press. Opening a link
+  changes nothing, so mail scanners cannot approve by accident. Approving needs no access to the till's PC, only the backend's public address.
+* Tokens are 256-bit random values; only SHA-256 hashes are stored (approve, reject and the waiting browser's token are three different secrets). Neither tokens nor
+  passwords reach the audit log. Every step is audited: `LOGIN_APPROVAL_REQUESTED`, `_APPROVED`, `_REJECTED`, `_EXPIRED`, `_CANCELLED`, `_EMAIL_FAILED`, `_INVALID_LINK`,
+  and the final `LOGIN` records `method: email_approval`.
+* Limits: 3 approval emails per account and 10 per address per window, 150 sign-in/status requests per address per 15 minutes, 60 status checks a minute per request,
+  and 20 bad tokens per address per 15 minutes.
+* If the email cannot be sent the user sees *"We couldn't send the approval email…"* (HTTP 503), no session is issued and the failure is audited without any secret.
 
-**Who can change passwords.** Passwords are controlled by rank, not by the user:
+**If email is not configured** the app still works, but it says so: everyone signs in with a password only, the banner *"Email sign-in approval is OFF"* shows on every
+page, `/api/auth/me` returns `loginApproval.configured: false`, the first-run setup shows the same warning, and the audit log records `EMAIL_APPROVAL_OFF` at start-up
+and `emailApproval: OFF` on every password sign-in. **The Windows desktop app has no public address, so email approval is off there by design.** Use it with the hosted backend.
+
+### Setting up email
+
+Set these in `backend/.env` (or the host's environment settings, e.g. Render) and restart. Leave `SMTP_HOST`, `EMAIL_FROM` and `PUBLIC_BASE_URL` all empty to run without email approval.
+A half-filled configuration stops the server at start with a clear message.
+
+| Variable | Meaning |
+| --- | --- |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` | Your mail server. `SMTP_SECURE=true` for port 465, `false` for 587 (STARTTLS) |
+| `SMTP_USER`, `SMTP_PASS` | Login for that server (both or neither). Never exposed to the browser or logs |
+| `EMAIL_FROM` | Sender, e.g. `pos@yourshop.com` or `Shop POS <pos@yourshop.com>` |
+| `PUBLIC_BASE_URL` | The public address of **this backend**, e.g. `https://pos-api.onrender.com` (https is required in production) |
+
+Any SMTP provider works. Examples: **Gmail / Google Workspace** `smtp.gmail.com:587` with an *app password*; **Microsoft 365** `smtp.office365.com:587`;
+**Brevo** `smtp-relay.brevo.com:587`; **SendGrid** `smtp.sendgrid.net:587` (user `apikey`); **Mailgun** `smtp.mailgun.org:587`; **Amazon SES** the SMTP endpoint of your region.
+At start-up the server checks the mail server and logs `Email login approval is ON` or the reason it is not.
+
+**Who can change passwords and emails.** Rank decides, not the user:
 
 | Action | Who |
 | --- | --- |
-| Reset the password or 2FA of cashiers, stock officers, accountants, auditors | **Manager** (own branch) or Super admin |
-| Reset the password or 2FA of a manager | Super admin |
-| Change **your own** password | Managers and Super admins only (a valid authenticator code is also needed if 2FA is on) |
-| Staff below manager | Cannot change their own password; they ask their manager |
+| Reset the password of cashiers, stock officers, accountants, auditors | **Manager** (own branch) or Super admin |
+| Reset the password of a manager | Super admin |
+| **Correct a user's email** (also their sign-in name; fixes a mistyped or lost address) | The same people, never for yourself |
+| Change **your own** password | Managers and Super admins only |
+| Turn optional email approval on or off for yourself | Anyone, with their password (not off where the role requires it) |
 
-A reset signs that user out of every device. Resets and changes are audited (`PASSWORD_RESET`, `PASSWORD_CHANGE`, `TWO_FACTOR_RESET`, …).
+A reset or an email change signs that user out of every device and cancels their pending approvals.
 
-**Locked-out owner (lost phone and recovery codes).** A manager cannot reset a super admin, by design. On the PC that holds the database run:
+**Locked-out owner (wrong email, lost mailbox, broken mail server).** A manager cannot change a super admin, by design. On the PC that holds the database run:
 
 ```bash
 cd backend
-RECOVER_EMAIL=owner@shop.com RECOVER_PASSWORD='a new passphrase' npm run auth:recover   # password is optional
+RECOVER_EMAIL=owner@shop.com RECOVER_NEW_EMAIL=right@shop.com RECOVER_PASSWORD='a new passphrase' npm run auth:recover   # the last two are optional
+RECOVER_EMAIL=cashier@shop.com RECOVER_EMAIL_APPROVAL=off npm run auth:recover                                         # switch off optional approval
 ```
 
-This turns two-factor off for that account, optionally sets a new password, signs the user out everywhere and records `ACCOUNT_RECOVERY` in the audit log.
-It needs file access to the database, so it cannot be used remotely through the app.
+It signs the user out everywhere, cancels pending approvals and records `ACCOUNT_RECOVERY`. It needs file access to the database, so it cannot be used through the app.
+If the mail server itself is down for long, blank `SMTP_HOST` and restart: sign-in falls back to password only, loudly (see above), until you restore it.
+
+**Upgrading from authenticator-app two-factor.** The migration removes the secret and recovery-code columns. Anyone who had it on is switched to *opted in* to email approval,
+and the old "required roles" setting is kept under its new name, so nobody ends up with less protection than before once email is configured.
+**Until email is configured, nobody has a second step**, and the app says so.
 
 ## 7. Known limitations (read before go-live)
 
@@ -287,7 +318,8 @@ It needs file access to the database, so it cannot be used remotely through the 
 * Quantities and amounts are stored as SQLite decimals (floating point): whole quantities and 2-decimal prices are exact, fractional weights can show tiny rounding noise.
 * Receipts print through Windows (or as an 80 mm PDF). ESC/POS thermal-printer commands (cash-drawer kick, paper cut) are not included.
 * There is no bulk CSV import. Data comes in through the app, by restoring a backup, or by editing the allowed columns in Google Sheets.
-* Failed sign-ins are limited per account (10 per 15 minutes), because every request on the shop PC comes from the same address.
+* Failed sign-ins are limited per account (10 per 15 minutes), and all sign-in requests per address (150 per 15 minutes), because every request on the shop PC comes from the same address.
+* Email approval is hosted-only: it needs the backend reachable at `PUBLIC_BASE_URL`. A local-network mode is not built.
 * Backups are copies of the database (they contain password hashes and sales). Keep the backup folder private.
 * Mobile-money payments are recorded (with a reference) but not integrated with a provider API.
 * One shop PC holds the database; running the same store on several PCs at once is not supported (each PC would have its own database).

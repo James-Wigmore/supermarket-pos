@@ -6,7 +6,7 @@ import { Users } from './Users';
 const who = vi.hoisted(() => ({ role: 'MANAGER' }));
 vi.mock('../lib/auth', () => ({ useAuth: () => ({ session: { user: { role: who.role } }, can: () => true, canAny: () => true }) }));
 
-const user = (id: string, name: string, role: string, twoFactorEnabled = false) => ({ id, name, email: `${name.toLowerCase()}@shop.test`, role, branchId: 'b1', isActive: true, lastLoginAt: null, twoFactorEnabled, branch: { name: 'Main' } });
+const user = (id: string, name: string, role: string, emailApprovalEnabled = false) => ({ id, name, email: `${name.toLowerCase()}@shop.test`, role, branchId: 'b1', isActive: true, lastLoginAt: null, emailApprovalEnabled, branch: { name: 'Main' } });
 const people = [user('u1', 'Root', 'SUPER_ADMIN', true), user('u2', 'Mary', 'MANAGER', true), user('u3', 'Charles', 'CASHIER', true), user('u4', 'Aaron', 'AUDITOR')];
 
 let calls: ReturnType<typeof stubApi>;
@@ -15,8 +15,9 @@ beforeEach(() => {
   who.role = 'MANAGER';
   calls = stubApi((url, { method }) => {
     if (url.startsWith('/users') && method === 'GET') return json(people);
+    if (url === '/settings') return json({ currency: 'UGX', loginApprovalRequiredRoles: ['SUPER_ADMIN', 'MANAGER'] });
     if (url.startsWith('/branches')) return json([]);
-    if (method === 'POST') return new Response(null, { status: 204 });
+    if (method === 'POST' || method === 'PATCH') return new Response(null, { status: 204 });
     return undefined;
   });
 });
@@ -24,15 +25,15 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 const row = async (name: string) => within((await screen.findByText(name)).closest('tr')!);
 
-describe('resetting passwords and two-factor by role', () => {
+describe('resetting passwords and correcting emails by role', () => {
   it('shows a manager reset buttons only for people ranked below them', async () => {
     renderApp(<Users />);
     const charles = await row('Charles');
     expect(charles.getByRole('button', { name: 'Reset password' })).toBeTruthy();
-    expect(charles.getByRole('button', { name: 'Reset 2FA' })).toBeTruthy();
+    expect(charles.getByRole('button', { name: 'Change email' })).toBeTruthy();
     const aaron = await row('Aaron');
     expect(aaron.getByRole('button', { name: 'Reset password' })).toBeTruthy();
-    expect(aaron.queryByRole('button', { name: 'Reset 2FA' })).toBeNull(); // nothing to reset
+    expect(aaron.getByRole('button', { name: 'Change email' })).toBeTruthy();
     for (const above of ['Mary', 'Root']) expect((await row(above)).queryByRole('button', { name: /Reset/ }), above).toBeNull();
   });
 
@@ -61,12 +62,29 @@ describe('resetting passwords and two-factor by role', () => {
     expect(calls.find((c) => c.url === '/users/u3/password')!.body).toEqual({ password: 'a-long-new-pass' });
   });
 
-  it('asks before resetting two-factor, then does it', async () => {
+  it('shows whether email approval is on, required for the role, or off', async () => {
     renderApp(<Users />);
-    fireEvent.click((await row('Charles')).getByRole('button', { name: 'Reset 2FA' }));
-    expect(calls.some((c) => c.url.includes('two-factor'))).toBe(false);
-    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Reset 2FA' }));
-    await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.url === '/users/u3/two-factor/reset')).toBe(true));
+    expect((await row('Charles')).getByText('On')).toBeTruthy(); // opted in
+    expect((await row('Mary')).getByText('On')).toBeTruthy();
+    await waitFor(async () => expect((await row('Aaron')).getByText('Off')).toBeTruthy());
+  });
+
+  it('changes a user’s email, only once it is a different address', async () => {
+    renderApp(<Users />);
+    fireEvent.click((await row('Charles')).getByRole('button', { name: 'Change email' }));
+    const dialog = within(await screen.findByRole('dialog'));
+    const submit = dialog.getByRole('button', { name: 'Change email' }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true); // still the current address
+    fireEvent.change(dialog.getByLabelText('New email'), { target: { value: ' Right@Shop.test ' } });
+    fireEvent.click(submit);
+    await waitFor(() => expect(calls.some((c) => c.method === 'PATCH' && c.url === '/users/u3/email')).toBe(true));
+    expect(calls.find((c) => c.url === '/users/u3/email')!.body).toEqual({ email: 'Right@Shop.test' });
+  });
+
+  it('no longer offers a way to reset two-factor', async () => {
+    renderApp(<Users />);
+    await row('Charles');
+    expect(screen.queryByRole('button', { name: /2FA/ })).toBeNull();
   });
 
   it('no longer offers a password field when editing an existing user', async () => {

@@ -1,50 +1,61 @@
-
-import nodemailer from 'nodemailer';
+import nodemailer, { type Transporter } from 'nodemailer';
 import { env } from '../config/env';
+import { logger } from '../lib/logger';
 
-type EmailMessage = {
+export interface EmailMessage {
   to: string;
   subject: string;
   text: string;
+  html?: string;
+}
+
+/** Email approval needs a mail server, a sender and the public address of this backend for the links. Read at call time. */
+export const emailConfigured = () => Boolean(env.SMTP_HOST && env.EMAIL_FROM && env.PUBLIC_BASE_URL);
+
+let cached: { key: string; transporter: Transporter } | null = null;
+
+const transport = () => {
+  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE } = env;
+  const key = JSON.stringify([SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE]);
+  if (cached?.key !== key) {
+    cached = {
+      key,
+      transporter: nodemailer.createTransport({
+        host: SMTP_HOST,
+        port: SMTP_PORT,
+        secure: SMTP_SECURE,
+        ...(SMTP_USER && SMTP_PASS ? { auth: { user: SMTP_USER, pass: SMTP_PASS } } : {}),
+        connectionTimeout: 10_000,
+        greetingTimeout: 10_000,
+        socketTimeout: 15_000,
+      }),
+    };
+  }
+  return cached.transporter;
 };
 
-export const sendEmail = async ({
-  to,
-  subject,
-  text,
-}: EmailMessage): Promise<void> => {
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE, EMAIL_FROM } =
-    env;
+/** A description of a mail failure that is safe to log and store: never contains the SMTP user or password. */
+export const describeEmailError = (err: unknown) => {
+  const e = err as { code?: string; responseCode?: number; message?: string };
+  let text = [e?.code, e?.responseCode, e?.message].filter(Boolean).join(' ').slice(0, 300);
+  for (const secret of [env.SMTP_PASS, env.SMTP_USER]) if (secret) text = text.split(secret).join('***');
+  return text || 'unknown error';
+};
 
-  if (!SMTP_HOST || !EMAIL_FROM) {
-    throw new Error('Email delivery is not configured');
+export const sendEmail = async ({ to, subject, text, html }: EmailMessage) => {
+  if (!emailConfigured()) throw new Error('Email delivery is not configured');
+  await transport().sendMail({ from: env.EMAIL_FROM, to, subject, text, html });
+};
+
+/** Checks the mail server at start-up. A failure is logged, not fatal: the server may only be briefly down. */
+export const checkEmailTransport = async () => {
+  if (!emailConfigured()) return false;
+  try {
+    await transport().verify();
+    logger.info(`Email login approval is ON (mail server ${env.SMTP_HOST}:${env.SMTP_PORT} reachable)`);
+    return true;
+  } catch (err) {
+    logger.error(`Email login approval is configured but the mail server check failed: ${describeEmailError(err)}`);
+    return false;
   }
-
-  if (Boolean(SMTP_USER) !== Boolean(SMTP_PASS)) {
-    throw new Error('Both SMTP_USER and SMTP_PASS must be configured');
-  }
-
-  const transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_SECURE,
-    ...(SMTP_USER && SMTP_PASS
-      ? {
-          auth: {
-            user: SMTP_USER,
-            pass: SMTP_PASS,
-          },
-        }
-      : {}),
-    connectionTimeout: 10_000,
-    greetingTimeout: 10_000,
-    socketTimeout: 15_000,
-  });
-
-  await transporter.sendMail({
-    from: EMAIL_FROM,
-    to,
-    subject,
-    text,
-  });
 };

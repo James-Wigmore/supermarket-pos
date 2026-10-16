@@ -97,6 +97,7 @@ describe('Google Sheets synchronisation', () => {
     expect(header).not.toContain('passwordHash');
     expect(JSON.stringify(sheets.table('Users'))).not.toContain('$2');
     expect(JSON.stringify(sheets.table('Users')).toLowerCase()).not.toContain('twofactor');
+    expect(JSON.stringify(sheets.table('Users')).toLowerCase()).not.toContain('emailapproval');
   });
 
   it('applies a price edited in the sheet and keeps the price history', async () => {

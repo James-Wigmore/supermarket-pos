@@ -64,5 +64,9 @@ adminRouter.put('/settings', authorize(P.SETTINGS_MANAGE), validate({ body: sett
   const before = await getSettings();
   await saveSettings(req.body);
   await audit(prisma, req.actor!, { action: 'SETTINGS_UPDATE', entity: 'Setting', entityId: 'app', before, after: req.body });
+  const roles = (list: string[]) => [...list].sort().join(',');
+  if (roles(before.loginApprovalRequiredRoles) !== roles(req.body.loginApprovalRequiredRoles)) {
+    await audit(prisma, req.actor!, { action: 'LOGIN_APPROVAL_POLICY_CHANGE', entity: 'Setting', entityId: 'app', before: { roles: before.loginApprovalRequiredRoles }, after: { roles: req.body.loginApprovalRequiredRoles } });
+  }
   res.json(req.body);
 });

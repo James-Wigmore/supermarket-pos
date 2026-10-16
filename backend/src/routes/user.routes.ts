@@ -3,7 +3,7 @@ import { P } from '../lib/permissions';
 import { authorize } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import * as users from '../services/user.service';
-import { createUserSchema, resetPasswordSchema, updateUserSchema } from '../validators/auth';
+import { changeEmailSchema, createUserSchema, resetPasswordSchema, updateUserSchema } from '../validators/auth';
 import { branchQuery, idParams } from '../validators/common';
 
 export const userRouter = Router();
@@ -26,7 +26,7 @@ userRouter.post('/:id/password', validate({ params: idParams, body: resetPasswor
   res.status(204).end();
 });
 
-userRouter.post('/:id/two-factor/reset', validate({ params: idParams }), async (req, res) => {
-  await users.resetTwoFactor(req.actor!, req.params.id as string);
+userRouter.patch('/:id/email', validate({ params: idParams, body: changeEmailSchema }), async (req, res) => {
+  await users.changeEmail(req.actor!, req.params.id as string, req.body.email);
   res.status(204).end();
 });

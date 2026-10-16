@@ -11,8 +11,11 @@ export interface SessionUser {
   user: { id: string; name: string; email: string; role: Role; branchId: string | null };
   branch: { id: string; name: string; code: string } | null;
   permissions: string[];
-  twoFactor: { enabled: boolean; required: boolean };
+  /** configured: the server can send approval emails. enabled: approval applies to this user at sign-in. */
+  loginApproval: { configured: boolean; required: boolean; optedIn: boolean; enabled: boolean };
 }
+
+export interface SetupStatus { needsSetup: boolean; emailApproval: boolean }
 
 export interface Barcode { id: string; code: string; isPrimary: boolean; isInternal: boolean }
 
@@ -72,7 +75,7 @@ export interface Settings {
   loyalty: { enabled: boolean; unitAmount: number };
   receipt: { storeName: string; header: string; footer: string };
   expiryAlertDays: number;
-  twoFactorRequiredRoles: Role[];
+  loginApprovalRequiredRoles: Role[];
 }
 
 export interface Approval { email: string; password: string }

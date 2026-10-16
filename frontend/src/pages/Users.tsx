@@ -1,18 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { BranchSelect } from '../components/BranchSelect';
-import { Badge, Button, Confirm, DataTable, ErrorNote, Input, Modal, PageHeader, Panel, Select, useToast } from '../components/ui';
+import { Badge, Button, DataTable, ErrorNote, Input, Modal, PageHeader, Panel, Select, useToast } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { dateTime, label } from '../lib/format';
-import { useBranches } from '../lib/queries';
+import { loadSettings, useBranches } from '../lib/queries';
 import type { Role } from '../lib/types';
 
-interface User { id: string; email: string; name: string; role: Role; branchId: string | null; isActive: boolean; lastLoginAt: string | null; twoFactorEnabled: boolean; branch: { name: string } | null }
+interface User { id: string; email: string; name: string; role: Role; branchId: string | null; isActive: boolean; lastLoginAt: string | null; emailApprovalEnabled: boolean; branch: { name: string } | null }
 
 const ALL_ROLES: Role[] = ['SUPER_ADMIN', 'MANAGER', 'CASHIER', 'STOCK_OFFICER', 'ACCOUNTANT', 'AUDITOR'];
 const MANAGER_ROLES: Role[] = ['CASHIER', 'STOCK_OFFICER'];
-/** Mirrors the server: a user can only be managed (password, 2FA) by someone ranked above them. */
+/** Mirrors the server: a user can only be managed (password, email) by someone ranked above them. */
 const RANK: Record<Role, number> = { SUPER_ADMIN: 3, MANAGER: 2, CASHIER: 1, STOCK_OFFICER: 1, ACCOUNTANT: 1, AUDITOR: 1 };
 
 const UserForm = ({ user, onClose }: { user: User | null; onClose: () => void }) => {
@@ -65,20 +65,34 @@ const ResetPassword = ({ user, onClose }: { user: User; onClose: () => void }) =
   );
 };
 
-export const Users = () => {
-  const { session } = useAuth();
+const ChangeEmail = ({ user, onClose }: { user: User; onClose: () => void }) => {
   const toast = useToast();
   const client = useQueryClient();
+  const [email, setEmail] = useState(user.email);
+  const save = useMutation({
+    mutationFn: () => api(`/users/${user.id}/email`, { method: 'PATCH', body: { email: email.trim() } }),
+    onSuccess: () => { toast('success', `Email changed for ${user.name}. They are signed out and use the new address to sign in.`); void client.invalidateQueries({ queryKey: ['users'] }); onClose(); },
+  });
+  const ready = email.includes('@') && email.trim().toLowerCase() !== user.email;
+  return (
+    <Modal open onClose={onClose} title={`Change email: ${user.name}`} width="sm" footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={() => save.mutate()} loading={save.isPending} disabled={!ready}>Change email</Button></>}>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (ready) save.mutate(); }}>
+        <p className="text-sm text-muted">Sign-in approval emails are sent to this address. Use it to fix a mistyped or lost address. Check it with {user.name} first.</p>
+        <Input label="New email" type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
+        <ErrorNote error={save.error} />
+        <button type="submit" hidden />
+      </form>
+    </Modal>
+  );
+};
+
+export const Users = () => {
+  const { session } = useAuth();
   const [resetting, setResetting] = useState<User | null>(null);
-  const [resettingTwoFactor, setResettingTwoFactor] = useState<User | null>(null);
+  const [changingEmail, setChangingEmail] = useState<User | null>(null);
   const me = session?.user.role;
   const canManage = (u: User) => Boolean(me && RANK[me] > RANK[u.role]);
-  const resetTwoFactor = useMutation({
-    mutationFn: (u: User) => api(`/users/${u.id}/two-factor/reset`, { method: 'POST' }),
-    onSuccess: (_r, u) => { toast('success', `Two-factor reset for ${u.name}. They will set it up again at their next sign-in.`); void client.invalidateQueries({ queryKey: ['users'] }); },
-    onError: (err) => toast('error', err.message),
-    onSettled: () => setResettingTwoFactor(null),
-  });
+  const settings = useQuery({ queryKey: ['settings'], queryFn: loadSettings });
   const [branchId, setBranchId] = useState('');
   const [editing, setEditing] = useState<User | null | 'new'>(null);
   const users = useQuery({ queryKey: ['users', branchId], queryFn: () => api<User[]>('/users', { query: { branchId: branchId || undefined } }) });
@@ -89,16 +103,16 @@ export const Users = () => {
         <DataTable rowKey={(u) => u.id} rows={users.data} loading={users.isLoading} onRowClick={setEditing} columns={[
           { header: 'Name', cell: (u) => <><b>{u.name}</b><div className="text-xs text-muted">{u.email}</div></> }, { header: 'Role', cell: (u) => <Badge>{label(u.role)}</Badge> }, { header: 'Branch', cell: (u) => u.branch?.name ?? 'All branches' },
           { header: 'Last sign-in', cell: (u) => dateTime(u.lastLoginAt) }, { header: 'Status', cell: (u) => (u.isActive ? <Badge tone="good">Active</Badge> : <Badge tone="bad">Disabled</Badge>) },
-          { header: '2FA', cell: (u) => (u.twoFactorEnabled ? <Badge tone="good">On</Badge> : <Badge>Off</Badge>) },
+          { header: 'Email approval', cell: (u) => (u.emailApprovalEnabled ? <Badge tone="good">On</Badge> : settings.data?.loginApprovalRequiredRoles.includes(u.role) ? <Badge tone="good">Required</Badge> : <Badge>Off</Badge>) },
           { header: 'Security', align: 'right', cell: (u) => canManage(u) && (
             <span className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
               <Button size="sm" variant="secondary" onClick={() => setResetting(u)}>Reset password</Button>
-              {u.twoFactorEnabled && <Button size="sm" variant="ghost" onClick={() => setResettingTwoFactor(u)}>Reset 2FA</Button>}
+              <Button size="sm" variant="ghost" onClick={() => setChangingEmail(u)}>Change email</Button>
             </span>) }]} />
       </Panel>
       {editing && <UserForm user={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
       {resetting && <ResetPassword user={resetting} onClose={() => setResetting(null)} />}
-      <Confirm open={Boolean(resettingTwoFactor)} danger title="Reset two-factor?" message={`${resettingTwoFactor?.name} will be signed out and must set up their authenticator app again. Do this only when they have lost their phone and recovery codes, and you are sure it is them.`} confirmLabel="Reset 2FA" onCancel={() => setResettingTwoFactor(null)} onConfirm={() => resettingTwoFactor && resetTwoFactor.mutate(resettingTwoFactor)} loading={resetTwoFactor.isPending} />
+      {changingEmail && <ChangeEmail user={changingEmail} onClose={() => setChangingEmail(null)} />}
     </>
   );
 };

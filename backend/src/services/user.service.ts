@@ -1,15 +1,16 @@
 import { Role, type Prisma } from '@prisma/client';
 import { audit } from '../lib/audit';
-import { badRequest, forbidden, notFound } from '../lib/errors';
+import { badRequest, conflict, forbidden, notFound } from '../lib/errors';
 import { ASSIGNABLE_ROLES, outranks } from '../lib/permissions';
 import { prisma } from '../lib/prisma';
 import { branchFor } from '../lib/scope';
 import type { Actor } from '../types';
 import type { CreateUserInput, UpdateUserInput } from '../validators/auth';
-import { clearTwoFactorData, hashPassword } from './auth.service';
+import { hashPassword } from './auth.service';
+import { cancelOpenApprovals } from './login-approval.service';
 
 export const userSelect = {
-  id: true, email: true, name: true, role: true, branchId: true, isActive: true, lastLoginAt: true, createdAt: true, twoFactorEnabled: true,
+  id: true, email: true, name: true, role: true, branchId: true, isActive: true, lastLoginAt: true, createdAt: true, emailApprovalEnabled: true,
   branch: { select: { name: true, code: true } },
 } satisfies Prisma.UserSelect;
 
@@ -62,6 +63,7 @@ export const updateUser = async (actor: Actor, id: string, input: UpdateUserInpu
     },
     select: userSelect,
   });
+  if (securityChange) await cancelOpenApprovals(id, 'account changed by an administrator', actor);
   await audit(prisma, actor, {
     action: input.role && input.role !== before.role ? 'PERMISSION_CHANGE' : 'USER_UPDATE',
     entity: 'User',
@@ -85,12 +87,21 @@ const loadManaged = async (actor: Actor, id: string) => {
 export const resetPassword = async (actor: Actor, id: string, password: string) => {
   const target = await loadManaged(actor, id);
   await prisma.user.update({ where: { id }, data: { passwordHash: await hashPassword(password), tokenVersion: { increment: 1 } } });
+  await cancelOpenApprovals(id, 'password reset', actor);
   await audit(prisma, actor, { action: 'PASSWORD_RESET', entity: 'User', entityId: id, branchId: target.branchId });
 };
 
-/** For a lost phone: switches 2FA off so the user enrols again (immediately, where their role requires it). */
-export const resetTwoFactor = async (actor: Actor, id: string) => {
+/**
+ * Corrects a user's email, which is also their sign-in name and where approval links go. Only someone ranked above them can do it
+ * (so nobody can redirect their own approvals), and it signs them out and cancels pending approvals.
+ */
+export const changeEmail = async (actor: Actor, id: string, email: string) => {
+  if (id === actor.id) throw forbidden('You cannot change your own email. Ask someone ranked above you.');
   const target = await loadManaged(actor, id);
-  await prisma.user.update({ where: { id }, data: { ...clearTwoFactorData, tokenVersion: { increment: 1 } } });
-  await audit(prisma, actor, { action: 'TWO_FACTOR_RESET', entity: 'User', entityId: id, branchId: target.branchId });
+  const before = await prisma.user.findUniqueOrThrow({ where: { id }, select: { email: true } });
+  if (before.email === email) return;
+  if (await prisma.user.findUnique({ where: { email }, select: { id: true } })) throw conflict('Another account already uses that email');
+  await prisma.user.update({ where: { id }, data: { email, tokenVersion: { increment: 1 } } });
+  await cancelOpenApprovals(id, 'email address changed', actor);
+  await audit(prisma, actor, { action: 'USER_EMAIL_CHANGE', entity: 'User', entityId: id, branchId: target.branchId, before: { email: before.email }, after: { email } });
 };
