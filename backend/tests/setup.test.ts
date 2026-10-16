@@ -23,7 +23,8 @@ describe('first-run setup without email configured', () => {
     expect(session.body.token).toBeTruthy(); // not locked out while email is not set up
     expect(session.body.user).toMatchObject({ email: 'owner@shop.test', role: 'SUPER_ADMIN' });
     expect(session.body.loginApproval).toMatchObject({ configured: false, enabled: false, required: true });
-    expect((await prisma.auditLog.findFirstOrThrow({ where: { action: 'LOGIN' } })).after).toMatchObject({ emailApproval: 'OFF' });
+    const owner = await prisma.user.findUniqueOrThrow({ where: { email: 'owner@shop.test' } });
+    expect((await prisma.auditLog.findFirstOrThrow({ where: { action: 'LOGIN', userId: owner.id } })).after).toMatchObject({ emailApproval: 'OFF' }); // the audit log is shared by all tests
 
     expect((await request(app).get('/api/setup/status')).body).toEqual({ needsSetup: false, emailApproval: false });
     const settings = await request(app).get('/api/settings').set(auth(session.body.token));

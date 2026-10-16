@@ -74,7 +74,7 @@ describe('who must use email approval is a setting only the super admin controls
     expect((await request(app).put('/api/settings').set(auth(w.users.MANAGER.token)).send(next)).status).toBe(403);
     expect((await request(app).put('/api/settings').set(auth(w.users.SUPER_ADMIN.token)).send(next)).status).toBe(200);
     expect((await loginRaw(w.users.CASHIER.email)).body).toMatchObject({ nextStep: 'emailApproval' });
-    expect(await prisma.auditLog.count({ where: { action: 'LOGIN_APPROVAL_POLICY_CHANGE' } })).toBe(1);
+    expect(await prisma.auditLog.count({ where: { action: 'LOGIN_APPROVAL_POLICY_CHANGE', userId: w.users.SUPER_ADMIN.id } })).toBe(1); // the audit log is shared by all tests
   });
 
   it('keeps honouring the old twoFactorRequiredRoles value so nobody is weakened by the upgrade', async () => {
@@ -126,7 +126,7 @@ describe('password changes and resets cancel pending sign-ins', () => {
     const link = await pending();
     expect((await request(app).post(`/api/users/${w.users.CASHIER.id}/password`).set(auth(w.users.MANAGER.token)).send({ password: 'BrandNewPass1!' })).status).toBe(204);
     expect((await approve(link)).status).toBe(410);
-    expect(await prisma.auditLog.count({ where: { action: 'LOGIN_APPROVAL_CANCELLED', after: { path: '$.reason', equals: 'password reset' } } })).toBe(1);
+    expect(await prisma.auditLog.count({ where: { action: 'LOGIN_APPROVAL_CANCELLED', userId: w.users.MANAGER.id, after: { path: '$.reason', equals: 'password reset' } } })).toBe(1);
   });
 
   it('cancels a pending approval when the user is deactivated', async () => {
@@ -157,7 +157,7 @@ describe('last-resort recovery of a locked-out account (command line, on the PC 
     expect((await loginRaw('owner@right.test')).status).toBe(401); // old password no longer works
     expect((await loginRaw('owner@right.test', 'RecoveredPass1!')).body.nextStep).toBe('emailApproval'); // still protected
     expect(mail.outbox.at(-1)!.to).toBe('owner@right.test');
-    const log = await prisma.auditLog.findFirstOrThrow({ where: { action: 'ACCOUNT_RECOVERY' } });
+    const log = await prisma.auditLog.findFirstOrThrow({ where: { action: 'ACCOUNT_RECOVERY', entityId: w.users.SUPER_ADMIN.id } });
     expect(JSON.stringify(log)).not.toContain('RecoveredPass1!');
     await expect(recoverAccount('nobody@nowhere.test')).rejects.toThrow(/not found/i);
     await expect(recoverAccount('owner@right.test', { newEmail: w.users.AUDITOR.email })).rejects.toThrow(/already uses/i);
