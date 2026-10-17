@@ -17,11 +17,12 @@ const stage = at('desktop', 'stage');
 const flags = new Set(process.argv.slice(2));
 
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'));
-const quote = (value) => JSON.stringify(value);
-
 const run = (command, args, cwd) => {
-  const { status } = spawnSync(command, args, { cwd, stdio: 'inherit', shell: true });
-  if (status !== 0) throw new Error(`"${command} ${args.join(' ')}" failed in ${cwd}`);
+  const npmCli = process.env.npm_execpath;
+  if (!npmCli) throw new Error('Run this through the root npm scripts (desktop:build, desktop:dev or desktop:package).');
+  const cli = command === 'npm' ? npmCli : join(dirname(npmCli), 'npx-cli.js');
+  const { status, error } = spawnSync(process.execPath, [cli, ...args], { cwd, stdio: 'inherit' });
+  if (error || status !== 0) throw new Error(`"${command} ${args.join(' ')}" failed in ${cwd}`, { cause: error });
 };
 
 const build = () => {
@@ -61,7 +62,7 @@ const installDependencies = () => {
   const electronVersion = readJson(at('desktop/node_modules/electron/package.json')).version;
   run('npm', ['install', '--omit=dev', '--no-audit', '--no-fund', '--package-lock=false'], stage);
   // Native modules (better-sqlite3) must match Electron's runtime, not the system Node.
-  run('npx', ['--no-install', 'electron-rebuild', '-f', '-v', electronVersion, '-w', 'better-sqlite3', '-m', quote(stage)], at('desktop'));
+  run('npx', ['--no-install', 'electron-rebuild', '-f', '-v', electronVersion, '-w', 'better-sqlite3', '-m', stage], at('desktop'));
 };
 
 /** The generated Prisma client lives next to the backend's dependencies; it is refreshed on every run. */
@@ -93,6 +94,12 @@ const packageInstaller = () => {
   if (process.platform !== 'win32') throw new Error('The Windows installer must be built on Windows (or the windows-latest CI runner).');
   rmSync(at('desktop/release'), { recursive: true, force: true });
   run('npx', ['--no-install', 'electron-builder', '--win', 'nsis', '--x64', '--config', 'packaging/electron-builder.config.cjs'], at('desktop'));
+  const unpackedModules = at('desktop', 'release', 'win-unpacked', 'resources', 'app.asar.unpacked', 'node_modules');
+  const requiredRuntimeFiles = [
+    join(unpackedModules, '.prisma', 'client', 'default.js'),
+    join(unpackedModules, '@prisma', 'client', 'runtime', 'client.js'),
+  ];
+  if (requiredRuntimeFiles.some((file) => !existsSync(file))) throw new Error('The packaged Prisma client or runtime is missing. Check the Electron Builder extraResources configuration.');
   console.log(`\nInstaller: ${at('desktop/release/Supermarket-POS-Setup.exe')}`);
 };
 

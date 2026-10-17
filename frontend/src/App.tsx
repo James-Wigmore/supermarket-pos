@@ -7,6 +7,7 @@ import { useAuth } from './lib/auth';
 import { loadSetupStatus } from './lib/queries';
 import { Login } from './pages/Login';
 import { Setup } from './pages/Setup';
+import { Signup } from './pages/Signup';
 import { Pos } from './pages/pos/Pos';
 
 const Audit = lazy(() => import('./pages/Audit').then((m) => ({ default: m.Audit })));
@@ -48,6 +49,7 @@ export const App = () => {
     <Suspense fallback={<Loading />}>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
         {session ? (
           <Route element={<Layout />}>
             <Route index element={<Home />} />

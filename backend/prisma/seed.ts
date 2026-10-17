@@ -8,8 +8,6 @@ import { createProduct } from '../src/services/product.service';
 import { addStock } from '../src/services/stock.service';
 import type { Actor } from '../src/types';
 
-if (isProd) throw new Error('The development seed must not run in production. Use `npm run seed:admin` instead.');
-
 export const DEV_PASSWORD = 'Password123!';
 
 const USERS: { email: string; name: string; role: Role }[] = [
@@ -44,40 +42,68 @@ const PRODUCTS: Seed[] = [
   { name: 'Bananas (Matooke)', category: 'Fresh Produce', supplier: 1, unit: 'kg', cost: 1500, price: 2500, min: 10, stock: 50 },
 ];
 
-const main = async () => {
+export const ensureSeedData = async () => {
+  if (isProd) throw new Error('The development seed must not run in production. Use `npm run seed:admin` instead.');
+
   await migrate();
-  if (await prisma.branch.findUnique({ where: { code: 'MAIN' } })) {
-    console.log('Seed data already present, nothing to do.');
-    return;
+
+  let branch = await prisma.branch.findUnique({ where: { code: 'MAIN' } });
+  if (!branch) {
+    branch = await prisma.branch.create({ data: { code: 'MAIN', name: 'Main Branch', address: 'Kampala Road', phone: '+256700000000' } });
+    await prisma.register.createMany({ data: [{ branchId: branch.id, name: 'Register 1' }, { branchId: branch.id, name: 'Register 2' }] });
   }
-  const branch = await prisma.branch.create({ data: { code: 'MAIN', name: 'Main Branch', address: 'Kampala Road', phone: '+256700000000' } });
-  await prisma.register.createMany({ data: [{ branchId: branch.id, name: 'Register 1' }, { branchId: branch.id, name: 'Register 2' }] });
 
   const passwordHash = await hashPassword(DEV_PASSWORD);
-  const users = await Promise.all(
-    USERS.map((u) => prisma.user.create({ data: { ...u, passwordHash, branchId: u.role === 'SUPER_ADMIN' ? null : branch.id } })),
-  );
-  const admin = users[0]!;
+  const users = await Promise.all(USERS.map(async (u) => prisma.user.upsert({
+    where: { email: u.email },
+    update: { name: u.name, role: u.role, isActive: true },
+    create: { ...u, passwordHash, branchId: u.role === 'SUPER_ADMIN' ? null : branch.id },
+  })));
+
+  const admin = users.find((u) => u.role === 'SUPER_ADMIN') ?? users[0]!;
   const actor: Actor = { id: admin.id, name: admin.name, email: admin.email, role: admin.role, branchId: null };
 
   const categories = new Map<string, string>();
-  for (const name of CATEGORIES) categories.set(name, (await prisma.category.create({ data: { name } })).id);
-  const suppliers = await Promise.all(SUPPLIERS.map((data) => prisma.supplier.create({ data })));
-
-  const nextWeek = new Date(Date.now() + 7 * 86_400_000);
-  for (const p of PRODUCTS) {
-    const product = await createProduct(actor, {
-      name: p.name, brand: p.brand, unit: p.unit, purchasePrice: p.cost, sellingPrice: p.price, taxRate: p.tax ?? 0,
-      minStock: p.min, tracksExpiry: p.expiry ?? false, categoryId: categories.get(p.category), supplierId: suppliers[p.supplier]!.id,
-      barcodes: p.barcode ? [p.barcode] : [], generateBarcode: !p.barcode,
+  for (const name of CATEGORIES) {
+    const category = await prisma.category.upsert({
+      where: { name },
+      update: {},
+      create: { name },
     });
-    await transact((tx) => addStock(tx, {
-      productId: product.id, branchId: branch.id, userId: admin.id, type: 'OPENING', quantity: p.stock, unitCost: p.cost, reference: 'SEED',
-      batch: p.expiry ? { batchNo: 'SEED-1', expiryDate: nextWeek } : undefined,
-    }));
+    categories.set(name, category.id);
   }
-  console.log(`Seeded branch ${branch.code}, ${users.length} users, ${PRODUCTS.length} products.`);
+
+  const suppliers = await Promise.all(SUPPLIERS.map((data) => prisma.supplier.upsert({
+    where: { name: data.name },
+    update: { contact: data.contact, phone: data.phone, email: data.email },
+    create: data,
+  })));
+
+  const productCount = await prisma.product.count();
+  if (productCount === 0) {
+    const nextWeek = new Date(Date.now() + 7 * 86_400_000);
+    for (const p of PRODUCTS) {
+      const product = await createProduct(actor, {
+        name: p.name, brand: p.brand, unit: p.unit, purchasePrice: p.cost, sellingPrice: p.price, taxRate: p.tax ?? 0,
+        minStock: p.min, tracksExpiry: p.expiry ?? false, categoryId: categories.get(p.category), supplierId: suppliers[p.supplier]!.id,
+        barcodes: p.barcode ? [p.barcode] : [], generateBarcode: !p.barcode,
+      });
+      await transact((tx) => addStock(tx, {
+        productId: product.id, branchId: branch.id, userId: admin.id, type: 'OPENING', quantity: p.stock, unitCost: p.cost, reference: 'SEED',
+        batch: p.expiry ? { batchNo: 'SEED-1', expiryDate: nextWeek } : undefined,
+      }));
+    }
+  }
+
+  const seededProductCount = await prisma.product.count();
+  console.log(`Seed data ready: branch ${branch.code}, ${users.length} users, ${seededProductCount} products.`);
   console.log(`Development password for every seeded user: ${DEV_PASSWORD} (${env.NODE_ENV})`);
 };
 
-main().finally(() => prisma.$disconnect());
+const main = async () => {
+  await ensureSeedData();
+};
+
+if (require.main === module) {
+  main().finally(() => prisma.$disconnect());
+}

@@ -8,6 +8,8 @@ on:
 jobs:
   installer:
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -15,6 +17,15 @@ jobs:
       - run: npm ci --prefix backend
       - run: npm ci --prefix frontend
       - run: npm ci --prefix desktop
+      - name: Run release checks
+        run: npm run check
+      - name: Match tag to app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $version = node -p "require('./desktop/package.json').version"
+          $expectedTag = "v$version"
+          if ($env:GITHUB_REF_NAME -ne $expectedTag) { throw "Release tag must match desktop/package.json version ($expectedTag)." }
       # Add CSC_LINK / CSC_KEY_PASSWORD as repository secrets to sign the installer (optional).
       - run: npm run desktop:package
         env:
@@ -25,3 +36,10 @@ jobs:
           name: Supermarket-POS-Setup
           path: desktop/release/Supermarket-POS-Setup.exe
           if-no-files-found: error
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: desktop/release/Supermarket-POS-Setup.exe
+          fail_on_unmatched_files: true

@@ -43,6 +43,25 @@ export const createUser = async (actor: Actor, input: CreateUserInput) => {
   return user;
 };
 
+export const selfSignUp = async (input: { name: string; email: string; password: string; branchId: string }) => {
+  const branch = await prisma.branch.findUnique({ where: { id: input.branchId } });
+  if (!branch) throw notFound('Branch');
+  if (await prisma.user.findUnique({ where: { email: input.email }, select: { id: true } })) throw conflict('An account already uses that email');
+
+  const user = await prisma.user.create({
+    data: {
+      name: input.name,
+      email: input.email,
+      role: Role.CASHIER,
+      branchId: input.branchId,
+      passwordHash: await hashPassword(input.password),
+    },
+    select: userSelect,
+  });
+  await audit(prisma, null, { action: 'USER_CREATE', entity: 'User', entityId: user.id, after: { ...user, source: 'self_signup' } });
+  return { user };
+};
+
 export const updateUser = async (actor: Actor, id: string, input: UpdateUserInput) => {
   const before = await prisma.user.findUnique({ where: { id }, select: userSelect });
   if (!before) throw notFound('User');

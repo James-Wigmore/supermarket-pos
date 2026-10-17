@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Badge, Button, DataTable, ErrorNote, Input, Modal, PageHeader, Pagination, Panel, useToast } from '../components/ui';
+import { Badge, Button, Confirm, DataTable, ErrorNote, Input, Modal, PageHeader, Pagination, Panel, useToast } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { date, money, num, currencyCode } from '../lib/format';
+import { errorMessage } from '../lib/hooks';
 import { usePage } from '../lib/queries';
 import type { Supplier } from '../lib/types';
 
@@ -61,19 +62,33 @@ export const Suppliers = () => {
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<Supplier | null | 'new'>(null);
   const [viewing, setViewing] = useState<Supplier | null>(null);
+  const [removing, setRemoving] = useState<Supplier | null>(null);
   const list = usePage<Supplier>('suppliers', '/suppliers', { page, pageSize: 25 });
+  const client = useQueryClient();
+  const toast = useToast();
+  const toggle = useMutation({
+    mutationFn: (supplier: Supplier) => api(`/suppliers/${supplier.id}`, { method: 'PATCH', body: { isActive: !supplier.isActive } }),
+    onSuccess: (_result, supplier) => {
+      toast('success', supplier.isActive ? 'Supplier removed from new selections' : 'Supplier restored');
+      void client.invalidateQueries({ queryKey: ['suppliers'] });
+      void client.invalidateQueries({ queryKey: ['ref'] });
+      setRemoving(null);
+    },
+    onError: (err) => toast('error', errorMessage(err)),
+  });
   return (
     <>
       <PageHeader title="Suppliers">{can('supplier:write') && <Button onClick={() => setEditing('new')}>New supplier</Button>}</PageHeader>
       <Panel className="!p-0">
         <DataTable rowKey={(s) => s.id} rows={list.data?.data} loading={list.isLoading} onRowClick={setViewing} empty={<p className="p-10 text-center text-muted">No suppliers yet.</p>} columns={[
-          { header: 'Supplier', cell: (s) => <b>{s.name}</b> }, { header: 'Contact', cell: (s) => [s.contact, s.phone].filter(Boolean).join(' · ') || '—' },
+          { header: 'Supplier', cell: (s) => <><b>{s.name}</b>{!s.isActive && <span className="ml-2"><Badge>Inactive</Badge></span>}</> }, { header: 'Contact', cell: (s) => [s.contact, s.phone].filter(Boolean).join(' · ') || '—' },
           { header: 'Balance owed', cell: (s) => <span className={num(s.balance) > 0 ? 'font-semibold text-danger' : ''}>{money(s.balance)}</span>, align: 'right' },
-          { header: '', cell: (s) => can('supplier:write') && <span onClick={(e) => e.stopPropagation()}><Button size="sm" variant="secondary" onClick={() => setEditing(s)}>Edit</Button></span>, align: 'right' }]} />
+          { header: '', cell: (s) => can('supplier:write') && <span className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}><Button size="sm" variant="secondary" onClick={() => setEditing(s)}>Edit</Button><Button size="sm" variant="ghost" onClick={() => setRemoving(s)}>{s.isActive ? 'Remove' : 'Restore'}</Button></span>, align: 'right' }]} />
         <Pagination meta={list.data?.meta} onPage={setPage} />
       </Panel>
       {editing && <SupplierForm supplier={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
       {viewing && <SupplierDetail supplier={viewing} onClose={() => setViewing(null)} />}
+      <Confirm open={Boolean(removing)} danger={Boolean(removing?.isActive)} title={removing?.isActive ? 'Remove supplier?' : 'Restore supplier?'} message={removing?.isActive ? `${removing?.name} will be hidden from new product and purchase selections. Existing records will be kept.` : `${removing?.name} will be available for new selections again.`} confirmLabel={removing?.isActive ? 'Remove' : 'Restore'} onCancel={() => setRemoving(null)} onConfirm={() => removing && toggle.mutate(removing)} loading={toggle.isPending} />
     </>
   );
 };
