@@ -1,6 +1,15 @@
 /* Windows installer settings for electron-builder. Run through `npm run desktop:package` (see packaging/stage.mjs). */
 const { version: electronVersion } = require('electron/package.json');
 
+/*
+ * Automatic updates: UPDATE_FEED_REPO is "owner/repository" of the PUBLIC GitHub repository whose Releases hold the installers
+ * (the release workflow sets it to this repository; see DEPLOYMENT.md). Left empty, the build has no update source and
+ * behaves exactly as it did before updates existed.
+ */
+const feed = (process.env.UPDATE_FEED_REPO ?? '').trim();
+if (feed && !/^[\w.-]+\/[\w.-]+$/.test(feed)) throw new Error(`UPDATE_FEED_REPO must look like "owner/repository", not "${feed}".`);
+const [owner, repo] = feed.split('/');
+
 module.exports = {
   appId: 'com.supermarketpos.desktop',
   productName: 'Supermarket POS',
@@ -29,7 +38,9 @@ module.exports = {
     // Sales and settings live in %APPDATA%\supermarket-pos and survive updates, re-installs and uninstalling.
     deleteAppDataOnUninstall: false,
     artifactName: 'Supermarket-POS-Setup.${ext}',
+    // The installer keeps one fixed file name, so updates are always downloaded whole (no per-version block map).
+    differentialPackage: false,
   },
-  // Updates are not enabled in the first release (see README, "Adding automatic updates").
-  publish: null,
+  // Written into the app as app-update.yml, together with latest.yml next to the installer, when a feed is set.
+  publish: feed ? { provider: 'github', owner, repo, releaseType: 'release' } : null,
 };

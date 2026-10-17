@@ -4,11 +4,14 @@ import { registerApiIpc } from '../ipc/api';
 import { trustOrigin } from '../ipc/handle';
 import { registerGoogleIpc } from '../ipc/google';
 import { registerSystemIpc } from '../ipc/system';
-import { backupBeforeSync, startAutoBackup } from './backup';
+import { registerUpdateIpc } from '../ipc/updates';
+import { backupBeforeSync, createBackup, startAutoBackup } from './backup';
 import { startBackend, type Backend } from './backend';
 import { accessToken, googleStatus } from './google';
 import { appRoot } from './paths';
 import { APP_URL, registerAppScheme, serveApp } from './protocol';
+import { createUpdaterPort, updatesDisabledReason } from './updater';
+import { createUpdateService } from './updates';
 import { createWindow } from './window';
 
 // Fixed folder name (no spaces) so user data survives updates and renames of the app.
@@ -48,6 +51,16 @@ const start = async () => {
     backup: () => backupBeforeSync(current),
   });
   backend.sync.startSyncScheduler();
+  const disabledReason = updatesDisabledReason();
+  const updates = createUpdateService({
+    port: createUpdaterPort(disabledReason === null),
+    currentVersion: app.getVersion(),
+    disabledReason,
+    isOnline: () => net.isOnline(),
+    beforeInstall: () => createBackup(current, 'pre-update'),
+  });
+  registerUpdateIpc(backend, updates);
+  updates.schedule();
   win = createWindow(url);
 };
 

@@ -1,12 +1,32 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EditableDesktopSettings } from '../../../desktop/bridge';
+import { UpdateControls } from '../components/UpdateControls';
 import { Button, ErrorNote, Loading, Panel, Select, useToast } from '../components/ui';
 import { tokenStore } from '../lib/api';
 import { ipc } from '../lib/desktop';
 import { dateTime } from '../lib/format';
+import { useUpdateStatus } from '../lib/updates';
 
 const bridge = () => window.pos!;
 const token = () => tokenStore.get() ?? '';
+
+const Updates = () => {
+  const status = useUpdateStatus();
+  const s = status.data;
+  return (
+    <Panel title="App updates">
+      {s ? (
+        <div className="space-y-3">
+          <p className="text-sm">Installed version: <b>{s.currentVersion}</b></p>
+          <UpdateControls status={s} />
+          {s.checkedAt && <p className="text-sm text-muted">Last checked: {dateTime(s.checkedAt)}</p>}
+          <p className="text-sm text-muted">The app looks for updates when it starts and every few hours while it is open. Nothing is downloaded or installed until you choose, and a backup is saved before installing.</p>
+        </div>
+      ) : <Loading />}
+      <ErrorNote error={status.error} />
+    </Panel>
+  );
+};
 
 /** Printer and backup options of the Windows app (only shown there). */
 export const DesktopSettings = () => {
@@ -53,6 +73,7 @@ export const DesktopSettings = () => {
         </div>
         <p className="mt-2 text-sm text-muted">Restoring replaces all current data and restarts the app. A safety copy is saved first.</p>
       </Panel>
+      <Updates />
       <ErrorNote error={save.error ?? chooseFolder.error ?? backup.error ?? restore.error} />
     </div>
   );

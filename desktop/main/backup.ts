@@ -4,12 +4,12 @@ import { join } from 'node:path';
 import type { Backend } from './backend';
 import { loadConfig, updateConfig } from './config';
 
-type Kind = 'manual' | 'auto' | 'pre-restore' | 'pre-sync';
+type Kind = 'manual' | 'auto' | 'pre-restore' | 'pre-sync' | 'pre-update';
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
 /** Backups that are replaced by newer ones. Manual and pre-restore copies are never deleted automatically. */
-const KEEP: Partial<Record<Kind, number>> = { auto: 14, 'pre-sync': 10 };
+const KEEP: Partial<Record<Kind, number>> = { auto: 14, 'pre-sync': 10, 'pre-update': 5 };
 const SQLITE_HEADER = 'SQLite format 3\0';
 
 const stamp = () => new Date().toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '-');

@@ -17,6 +17,10 @@ const bridge: PosBridge = {
   googleImportCredentials: (token) => call('google:import', token),
   googleConnect: (token) => call('google:connect', token),
   googleDisconnect: (token) => call('google:disconnect', token),
+  updateStatus: () => call('update:status'),
+  updateCheck: (token) => call('update:check', token),
+  updateDownload: (token) => call('update:download', token),
+  updateInstall: (token) => call('update:install', token),
 };
 
 contextBridge.exposeInMainWorld('pos', bridge);

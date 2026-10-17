@@ -37,6 +37,24 @@ export interface GoogleStatus {
   canStore: boolean;
 }
 
+export type UpdateState = 'disabled' | 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error';
+
+export interface UpdateStatus {
+  state: UpdateState;
+  /** The version running now. */
+  currentVersion: string;
+  /** The newer version, once one was found. */
+  version: string | null;
+  /** 0 to 100 while downloading. */
+  percent: number | null;
+  /** When the last check finished (ISO time). */
+  checkedAt: string | null;
+  /** What went wrong, for the administrator. Only set when `state` is `error`. */
+  error: string | null;
+  /** Why updates cannot run here (`state` is `disabled`). */
+  disabledReason: string | null;
+}
+
 /** Calls taking a `token` are administrator-only: the main process verifies it before acting. */
 export interface PosBridge {
   request(req: ApiRequest): Promise<ApiResponse>;
@@ -55,4 +73,10 @@ export interface PosBridge {
   /** Opens the browser for the Google sign-in and resolves when it is finished. */
   googleConnect(token: string): Promise<GoogleStatus>;
   googleDisconnect(token: string): Promise<GoogleStatus>;
+  /** Cheap and read-only: what the update checker knows right now. */
+  updateStatus(): Promise<UpdateStatus>;
+  updateCheck(token: string): Promise<UpdateStatus>;
+  updateDownload(token: string): Promise<UpdateStatus>;
+  /** Saves a safety backup, then closes the app, installs the downloaded update and reopens it. */
+  updateInstall(token: string): Promise<UpdateStatus>;
 }

@@ -119,12 +119,30 @@ To skip the Desktop shortcut, set `createDesktopShortcut: false` in `desktop/pac
 warning, buy a code-signing certificate and set `CSC_LINK` (path or URL of the .pfx) and `CSC_KEY_PASSWORD` before packaging
 (or as GitHub secrets of the same name).
 
-**Installing an update:** build the new installer and run it on the shop PC. Close the POS first. The database is migrated
+**Installing an update by hand:** build the new installer and run it on the shop PC. Close the POS first. The database is migrated
 automatically the first time the new version starts, after which older backups can still be restored.
 
-**Adding automatic updates later:** the installer already has a stable name, app ID and per-user layout. To add updates, install
-`electron-updater`, set `publish` in `electron-builder.config.cjs` (for example to GitHub Releases) and call
-`autoUpdater.checkForUpdatesAndNotify()` in `desktop/main/main.ts` once the window is ready. Nothing else has to change.
+### Automatic updates
+
+Installed apps can find and install new versions themselves. It is opt-in per build: without an update source the app behaves as it
+always did, and *Settings > Printer and backups > App updates* says so.
+
+* **What the shop sees.** About 45 seconds after start, and every 6 hours while the app is open, it looks for a newer version. When
+  one exists, **administrators only** see a banner on every page: *Download update*, then (after the progress bar) *Restart and install*.
+  The same controls and the installed version are under *Settings > Printer and backups > App updates*.
+* **Nothing happens on its own.** Nothing is downloaded or installed until an administrator presses the button, so the connection is
+  not used at a bad moment and a sale is never interrupted. Installing asks for confirmation, saves a safety copy of the data
+  (`Supermarket-POS-pre-update-…db` in the backup folder, the last 5 are kept) and, if that backup fails, does **not** install.
+  Then the app closes, installs silently and opens again. Allow about a minute, and nobody can sell meanwhile.
+* **Bad connection.** Checks in the background stay silent when the internet is down. A failed download shows its reason and *Try again*.
+* **Your data** lives in `%APPDATA%\supermarket-pos` and is untouched. Downgrades are never offered.
+* **Releasing a version:** raise `version` in `desktop/package.json`, commit, then push a matching tag (`v1.2.0`). The release workflow
+  builds the installer and publishes `Supermarket-POS-Setup.exe` and `latest.yml` to that tag's GitHub Release. Installed apps read this
+  repository's Releases, so **the repository must stay public**. Details and safeguards: `DEPLOYMENT.md`, "Automatic updates".
+* **A build made on your own PC** has no update source unless you ask for one:
+  `UPDATE_FEED_REPO=owner/repository npm run desktop:package` (Git Bash). Installers from the release workflow always have it.
+* **First time only:** a copy installed *before* updates existed has no update code, so install the first update-enabled installer by
+  hand once. After that, updates arrive in the app.
 
 ### Acceptance checklist (run on a clean Windows PC with no internet first)
 1. Install, then start from the Start Menu. The setup wizard appears. Create the store and administrator.
@@ -136,6 +154,9 @@ automatically the first time the new version starts, after which older backups c
 7. *Settings > Google Sheets*: connect (needs internet), watch the pending count fall to 0 and the sale appear in the sheet.
    Edit a price in the sheet and press *Sync now*: the new price appears in the POS.
 8. Install the same installer again over the top: all data is still there.
+9. Updates (use a release-workflow installer, see `DEPLOYMENT.md`): install version N, publish N+1 by pushing its tag, then in the app as an administrator: the banner
+   appears, *Download update*, *Restart and install*. It reopens as N+1 with all data intact and a `pre-update` backup in the backup folder.
+   A cashier signed in on another till sees no banner.
 
 ### Troubleshooting
 | Problem | What to do |

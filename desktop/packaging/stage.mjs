@@ -93,14 +93,21 @@ const launch = () => {
 const packageInstaller = () => {
   if (process.platform !== 'win32') throw new Error('The Windows installer must be built on Windows (or the windows-latest CI runner).');
   rmSync(at('desktop/release'), { recursive: true, force: true });
-  run('npx', ['--no-install', 'electron-builder', '--win', 'nsis', '--x64', '--config', 'packaging/electron-builder.config.cjs'], at('desktop'));
+  // `--publish never`: this script only builds. Publishing the release is a separate, explicit step (see the release workflow).
+  run('npx', ['--no-install', 'electron-builder', '--win', 'nsis', '--x64', '--publish', 'never', '--config', 'packaging/electron-builder.config.cjs'], at('desktop'));
   const unpackedModules = at('desktop', 'release', 'win-unpacked', 'resources', 'app.asar.unpacked', 'node_modules');
   const requiredRuntimeFiles = [
     join(unpackedModules, '.prisma', 'client', 'default.js'),
     join(unpackedModules, '@prisma', 'client', 'runtime', 'client.js'),
   ];
   if (requiredRuntimeFiles.some((file) => !existsSync(file))) throw new Error('The packaged Prisma client or runtime is missing. Check the Electron Builder extraResources configuration.');
+  const feed = (process.env.UPDATE_FEED_REPO ?? '').trim();
+  if (feed) {
+    const updateFiles = [at('desktop', 'release', 'latest.yml'), join(at('desktop', 'release', 'win-unpacked', 'resources'), 'app-update.yml')];
+    if (updateFiles.some((file) => !existsSync(file))) throw new Error('UPDATE_FEED_REPO is set but latest.yml or app-update.yml was not produced. Check the Electron Builder publish configuration.');
+  }
   console.log(`\nInstaller: ${at('desktop/release/Supermarket-POS-Setup.exe')}`);
+  console.log(feed ? `Update feed: github.com/${feed} (release Supermarket-POS-Setup.exe and latest.yml together there)` : 'No update feed set: this build cannot look for updates. Set UPDATE_FEED_REPO=owner/repository to build one that can.');
 };
 
 if (!flags.has('--no-build')) build();

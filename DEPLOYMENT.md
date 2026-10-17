@@ -11,6 +11,28 @@ The supported production package is the Windows desktop installer. The app runs 
 
 The installer is unsigned unless the GitHub Actions secrets `CSC_LINK` and `CSC_KEY_PASSWORD` are configured. Unsigned installers show a Windows SmartScreen warning. Signing certificates and secrets are not included in this repository.
 
+## Automatic updates for the installed app
+
+Installed apps look for new versions in **this repository's GitHub Releases**, so the repository must stay public. (A private repository
+cannot be read by an installed app without a secret saved on every shop PC, so if the repository is ever made private, installed apps
+simply stop finding updates.) No tokens or extra settings are needed: the release workflow already has permission to publish releases.
+
+**Releasing:** raise `version` in `desktop/package.json`, commit, push the matching tag (`v1.2.0`). The workflow runs the checks, builds the
+installer with this repository as its update source and publishes `Supermarket-POS-Setup.exe` and `latest.yml` to the release. Installed
+apps then offer the update to administrators within about 6 hours (or at once via *Check for updates*). Manually started workflow runs only
+create a downloadable artifact: nothing is published, so nothing is offered.
+
+**First update-enabled install:** older installs contain no update code. Install the first release built by this workflow by hand on each PC.
+
+**Withdrawing a bad release:** delete that release in GitHub so it is no longer offered, then publish a fixed, higher version. Apps never
+downgrade, and a machine that already installed the bad version needs the higher one.
+
+**Trust.** An update is checked against the SHA-512 in `latest.yml`, fetched over HTTPS. Anyone who can push a version tag to this repository
+can publish an installer that every PC will offer to its administrator, so treat that as the key to all shops:
+- keep the number of people with write access small, and use two-factor sign-in on their GitHub accounts;
+- protect `main` and restrict who may create `v*` tags (GitHub: *Settings > Rules > Rulesets*);
+- sign the installer (`CSC_LINK`, `CSC_KEY_PASSWORD`) before relying on this: it is the stronger protection. Signed updates have not been tested here.
+
 ## Hosted browser deployment
 
 Vercel is a frontend host only. The current backend uses SQLite and requires durable filesystem storage, so do not deploy it to Vercel serverless functions or use ephemeral container storage. A hosted deployment must use one persistent Node backend instance with a durable volume, backups, monitoring, and TLS. SQLite is not configured for horizontal scaling or concurrent backend replicas. The old PostgreSQL hosting configurations in `legacy/` do not match this backend.
