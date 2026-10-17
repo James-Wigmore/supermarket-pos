@@ -15,10 +15,22 @@ The installer is unsigned unless the GitHub Actions secrets `CSC_LINK` and `CSC_
 
 Vercel is a frontend host only. The current backend uses SQLite and requires durable filesystem storage, so do not deploy it to Vercel serverless functions or use ephemeral container storage. A hosted deployment must use one persistent Node backend instance with a durable volume, backups, monitoring, and TLS. SQLite is not configured for horizontal scaling or concurrent backend replicas. The old PostgreSQL hosting configurations in `legacy/` do not match this backend.
 
+### Render backend setup
+
+The root `render.yaml` is a starting blueprint for the hosted email-approval version. Create a Render Blueprint from this repository and choose the `starter` web-service plan; the free plan does not provide the persistent disk this SQLite database requires. The service is deliberately configured as one instance with a 1 GB disk mounted at `/var/data`, and stores the database at `file:/var/data/pos.db`.
+
+The blueprint generates `JWT_SECRET`. After Render creates the service and shows its public URL, set these environment values in the Render dashboard and redeploy:
+
+- `PUBLIC_BASE_URL`: backend origin only, such as `https://supermarket-pos-email-api.onrender.com` (no `/api` suffix).
+- `CORS_ORIGINS`: the exact Vercel production origin, such as `https://your-pos.vercel.app`.
+- `EMAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, and `SMTP_PASS`: values from your email provider. Put credentials only in Render's environment settings.
+
+The backend sends approval links to `PUBLIC_BASE_URL/api/auth/approve` and `/reject`; this must be the reachable backend URL, not the Vercel URL. Do not enable approval requirements until a real test email has been delivered and both approval and rejection have been tested.
+
 To configure Vercel:
 
 - Set the project root to `frontend`, framework to Vite, and output directory to `dist`.
-- Set `VITE_API_URL` to the public backend origin followed by `/api` in the Vercel Production environment.
+- Set `VITE_API_URL` to the public backend origin followed by `/api` (for example `https://supermarket-pos-email-api.onrender.com/api`) in the Vercel Production environment.
 - Add GitHub Actions secrets `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID`; configure the GitHub `production` environment.
 - The `Vercel Production Deploy` workflow runs only after the `CI` workflow succeeds on `main` and deploys that exact tested commit.
 
