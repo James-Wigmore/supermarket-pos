@@ -4,7 +4,11 @@ export const id = z.uuid();
 export const idParams = z.object({ id });
 export const amount = z.coerce.number().nonnegative().max(1e12);
 export const positiveAmount = z.coerce.number().positive().max(1e12);
-export const quantity = z.coerce.number().positive().max(1e9);
+export const quantity = z.coerce
+  .number()
+  .min(0.001, 'Quantity must be at least 0.001')
+  .max(1e9)
+  .refine((v) => Math.abs(v * 1000 - Math.round(v * 1000)) < 1e-6, 'At most 3 decimal places');
 export const optionalText = z.string().trim().max(500).optional();
 export const dateInput = z.coerce.date();
 

@@ -17,3 +17,6 @@ export const forbidden = (message = 'You do not have permission to perform this 
   new AppError(403, message, 'FORBIDDEN');
 export const notFound = (what = 'Resource') => new AppError(404, `${what} not found`, 'NOT_FOUND');
 export const conflict = (message: string) => new AppError(409, message, 'CONFLICT');
+export const gone = (message: string, code = 'GONE') => new AppError(410, message, code);
+export const tooManyRequests = (message: string) => new AppError(429, message, 'RATE_LIMITED');
+export const serviceUnavailable = (message: string, code = 'SERVICE_UNAVAILABLE') => new AppError(503, message, code);

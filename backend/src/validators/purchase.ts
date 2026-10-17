@@ -11,6 +11,7 @@ const batchFields = {
 const lineSchema = z.object({ productId: id, quantity, unitCost: amount, ...batchFields });
 
 export const createPurchaseSchema = z.object({
+  clientRef: id.optional(),
   supplierId: id,
   branchId: id.optional(),
   notes: z.string().trim().max(300).optional(),

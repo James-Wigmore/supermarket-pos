@@ -1,13 +1,14 @@
 import { Router } from 'express';
 import { loginLimiter } from '../middleware/rateLimit';
 import { validate } from '../middleware/validate';
+import { emailConfigured } from '../services/email.service';
 import { needsSetup, runSetup } from '../services/setup.service';
 import { setupSchema } from '../validators/setup';
 
 export const setupRouter = Router();
 
 setupRouter.get('/status', async (_req, res) => {
-  res.json({ needsSetup: await needsSetup() });
+  res.json({ needsSetup: await needsSetup(), emailApproval: emailConfigured() });
 });
 
 setupRouter.post('/', loginLimiter, validate({ body: setupSchema }), async (req, res) => {

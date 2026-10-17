@@ -11,7 +11,8 @@ import { dateTime, fmtNum, money, num, uuid, currencyCode } from '../../lib/form
 import { errorMessage, useDebounced } from '../../lib/hooks';
 import { productCache, queue } from '../../lib/offline';
 import { useSync } from '../../lib/sync';
-import type { LookupProduct, LookupResult, Page, Product, Receipt, Sale, Session } from '../../lib/types';
+import type { Customer, LookupProduct, LookupResult, Page, Product, Receipt, Sale, Session } from '../../lib/types';
+import { CustomerPicker } from './CustomerPicker';
 import { OpenShift } from './OpenShift';
 import { PayModal } from './PayModal';
 
@@ -66,6 +67,7 @@ const Register = ({ session }: { session: Session }) => {
   const { run, dialog } = useApproval();
   const scanRef = useRef<HTMLInputElement>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [customer, setCustomer] = useState<Customer | null>(null);
   const [selected, setSelected] = useState(0);
   const [scan, setScan] = useState('');
   const [matches, setMatches] = useState<(Product | LookupProduct)[]>([]);
@@ -127,12 +129,12 @@ const Register = ({ session }: { session: Session }) => {
 
   const setLine = (index: number, patch: Partial<CartItem>) => setCart((c) => c.map((l, i) => (i === index ? { ...l, ...patch } : l)));
   const removeLine = (index: number) => { setCart((c) => c.filter((_, i) => i !== index)); setSelected(0); focusScan(); };
-  const reset = () => { setCart([]); setScan(''); setPayError(undefined); clientId.current = uuid(); focusScan(); };
+  const reset = () => { setCart([]); setCustomer(null); setScan(''); setPayError(undefined); clientId.current = uuid(); focusScan(); };
 
   const complete = async (payments: PaymentRow[]) => {
     setBusy(true);
     setPayError(undefined);
-    const body = { clientId: clientId.current, sessionId: session.id, items: toSaleItems(cart), payments };
+    const body = { clientId: clientId.current, sessionId: session.id, customerId: customer?.id, items: toSaleItems(cart), payments };
     try {
       const sale = await run('This sale uses a price or discount above your limit.', (approval) => api<Sale>('/sales', { method: 'POST', body: { ...body, approval } }));
       const data = await api<Receipt>(`/sales/${sale.id}/receipt`);
@@ -266,6 +268,7 @@ const Register = ({ session }: { session: Session }) => {
           <span>{fmtNum(itemCount)} items</span>
         </div>
         <div className="flex-1 space-y-1 px-5 py-4">
+          <CustomerPicker customer={customer} online={online} onChange={setCustomer} />
           <div className="flex justify-between text-white/70"><span>Subtotal</span><span>{money(totals.subtotal)}</span></div>
           {totals.discount > 0 && <div className="flex justify-between text-amber"><span>Discounts</span><span>-{money(totals.discount)}</span></div>}
           <p className="pt-4 text-sm text-white/70">Total</p>

@@ -5,7 +5,7 @@ import { prisma } from './prisma';
 const DEFAULT_DIR = join(__dirname, '../../prisma/migrations');
 const BREAKPOINT = '--> statement-breakpoint';
 
-const statementsOf = (file: string) =>
+export const statementsOf = (file: string) =>
   readFileSync(file, 'utf8')
     .split(BREAKPOINT)
     .map((s) => s.trim())

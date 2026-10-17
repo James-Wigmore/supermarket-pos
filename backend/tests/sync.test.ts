@@ -96,6 +96,8 @@ describe('Google Sheets synchronisation', () => {
     const header = sheets.tabs_.get('Users')![0] as string[];
     expect(header).not.toContain('passwordHash');
     expect(JSON.stringify(sheets.table('Users'))).not.toContain('$2');
+    expect(JSON.stringify(sheets.table('Users')).toLowerCase()).not.toContain('twofactor');
+    expect(JSON.stringify(sheets.table('Users')).toLowerCase()).not.toContain('emailapproval');
   });
 
   it('applies a price edited in the sheet and keeps the price history', async () => {
@@ -129,6 +131,28 @@ describe('Google Sheets synchronisation', () => {
     await settle();
     expect(await prisma.priceHistory.count({ where: { productId: product.id } })).toBe(1);
     expect(await prisma.syncLog.count({ where: { level: 'ERROR', message: { contains: 'Products row' } } })).toBe(1);
+  });
+
+  it('never lets a sheet edit make a product free', async () => {
+    const product = await prisma.product.create({ data: { sku: 'FREE-1', name: 'Paid item', prices: { create: { newPrice: 1000, effectiveFrom: new Date(), userId: 'seed' } } } });
+    await settle();
+    sheets.edit('Products', product.id, 'sellingPrice', 0);
+    await settle();
+    expect(await prisma.priceHistory.count({ where: { productId: product.id } })).toBe(1);
+    expect(await prisma.syncLog.count({ where: { level: 'ERROR', message: { contains: 'sellingPrice' } } })).toBeGreaterThanOrEqual(1);
+  });
+
+  it('applies the category rules to categories typed into the sheet', async () => {
+    const dairy = await prisma.category.create({ data: { name: 'Dairy' } });
+    const bakery = await prisma.category.create({ data: { name: 'Bakery' } });
+    await settle();
+    sheets.edit('Categories', bakery.id, 'name', 'dairy');
+    sheets.addRow('Categories', { name: 'DAIRY' });
+    sheets.addRow('Categories', { name: 'Frozen' });
+    await settle();
+    expect((await prisma.category.findMany({ orderBy: { name: 'asc' } })).map((c) => c.name)).toEqual(['Bakery', 'Dairy', 'Frozen', 'General']);
+    expect(dairy.name).toBe('Dairy');
+    expect(await prisma.syncLog.count({ where: { level: 'ERROR', message: { contains: 'already exists' } } })).toBe(2);
   });
 
   it('holds back a record changed in both places and applies the administrator\'s choice', async () => {

@@ -91,6 +91,8 @@ model User {
   isActive     Boolean  @default(true)
   lastLoginAt  DateTime?
   tokenVersion Int      @default(0)
+  emailApprovalEnabled Boolean @default(false)
+  loginApprovals LoginApproval[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -289,6 +291,7 @@ model StockMovement {
 model Purchase {
   id         String         @id @default(uuid())
   number     String         @unique
+  clientRef  String?        @unique
   supplierId String
   branchId   String
   status     PurchaseStatus
@@ -574,4 +577,37 @@ model SyncLog {
 
   @@index([level, resolution])
   @@index([pushedAt])
+}
+
+enum LoginApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  CANCELLED
+  COMPLETED
+  FAILED
+}
+
+/// One email-approval attempt for a sign-in. Only SHA-256 hashes of the three random tokens are stored.
+model LoginApproval {
+  id               String              @id @default(uuid())
+  userId           String
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sentTo           String
+  approveTokenHash String              @unique
+  rejectTokenHash  String              @unique
+  pollTokenHash    String              @unique
+  status           LoginApprovalStatus @default(PENDING)
+  expiresAt        DateTime
+  decidedAt        DateTime?
+  claimUntil       DateTime?
+  claimedAt        DateTime?
+  tokenVersion     Int
+  ip               String?
+  userAgent        String?
+  createdAt        DateTime            @default(now())
+
+  @@index([userId, status])
+  @@index([status, expiresAt])
 }

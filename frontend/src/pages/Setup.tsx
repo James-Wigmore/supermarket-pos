@@ -1,9 +1,10 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, ErrorNote, Input } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { loadSetupStatus } from '../lib/queries';
 
 const STEPS = ['Business', 'Branch and registers', 'Administrator'] as const;
 const MAX_REGISTERS = 10;
@@ -19,6 +20,7 @@ export const Setup = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const client = useQueryClient();
+  const emailApproval = useQuery({ queryKey: ['setup'], queryFn: loadSetupStatus }).data?.emailApproval;
   const [step, setStep] = useState(0);
   const [f, setF] = useState(INITIAL);
   const [error, setError] = useState<unknown>();
@@ -47,9 +49,11 @@ export const Setup = () => {
           admin: { name: f.adminName, email: f.email, password: f.password },
         },
       });
-      client.setQueryData(['setup'], { needsSetup: false });
-      navigate('/settings?tab=sheets', { replace: true }); // next: connect Google Sheets (Windows app)
-      await login(f.email.trim(), f.password);
+      client.setQueryData(['setup'], { needsSetup: false, emailApproval: Boolean(emailApproval) });
+      const step = await login(f.email.trim(), f.password);
+      // with email approval running, the owner approves this first sign-in before the next step (connect Google Sheets, Windows app)
+      if (step.kind === 'done') navigate('/settings?tab=sheets', { replace: true });
+      else navigate('/login', { replace: true, state: { step } });
     } catch (err) {
       setError(err);
     } finally {
@@ -88,6 +92,8 @@ export const Setup = () => {
             {text('email', 'Email (used to sign in)', { type: 'email', autoComplete: 'username' })}
             {text('password', 'Password (8+ characters)', { type: 'password', autoComplete: 'new-password' })}
             {text('confirm', 'Repeat password', { type: 'password', autoComplete: 'new-password', error: f.confirm && f.confirm !== f.password ? 'Passwords do not match' : undefined })}
+            {emailApproval === false && <p role="alert" className="text-sm font-medium text-danger">Email sign-in approval is OFF: this server has no email set up, so everyone signs in with a password only. Set it up later (see the README) to protect admin and manager accounts.</p>}
+            {emailApproval && <p className="text-sm text-muted">Email approval is on. Your first sign-in will be sent to this address, so check it carefully.</p>}
           </div>
         )}
         <ErrorNote error={error} />

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
 import { adminRouter } from './admin.routes';
+import { approvalPageRouter } from './approval-pages.routes';
 import { authRouter } from './auth.routes';
 import { branchRouter, registerRouter } from './branch.routes';
 import { categoryRouter, customerRouter, expenseRouter, promotionRouter } from './catalog.routes';
@@ -18,7 +19,7 @@ export const api = Router();
 api.get('/health', (_req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
-api.use('/auth', authRouter);
+api.use('/auth', approvalPageRouter, authRouter);
 api.use('/setup', setupRouter);
 
 const secured = Router();

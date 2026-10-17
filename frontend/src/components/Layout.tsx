@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { currencyCode, label } from '../lib/format';
 import { loadSettings } from '../lib/queries';
+import { SecurityDialog } from './SecurityDialog';
 import { StatusPill } from './StatusPill';
 
 interface NavItem { to: string; label: string; any: string[] }
@@ -29,6 +30,7 @@ const NAV: NavItem[] = [
 
 export const Layout = () => {
   const { session, canAny, logout } = useAuth();
+  const [changingPassword, setChangingPassword] = useState(false);
   const [open, setOpen] = useState(false);
   const { pathname } = useLocation();
   const items = NAV.filter((item) => canAny(...item.any));
@@ -64,9 +66,16 @@ export const Layout = () => {
             <div className="font-semibold">{session?.user.name}</div>
             <div className="text-xs text-muted">{label(session?.user.role ?? '')}</div>
           </div>
+          <button type="button" onClick={() => setChangingPassword(true)} className="rounded-field border border-line px-3 py-1.5 text-sm font-medium hover:bg-paper">Security</button>
           <button type="button" onClick={() => void logout()} className="rounded-field border border-line px-3 py-1.5 text-sm font-medium hover:bg-paper">Sign out</button>
+          {changingPassword && <SecurityDialog onClose={() => setChangingPassword(false)} />}
         </div>
       </header>
+      {session && !session.loginApproval.configured && (
+        <div role="alert" className="border-b border-line bg-warn-soft px-4 py-1.5 text-sm font-medium text-warn">
+          Email sign-in approval is OFF on this server. Everyone signs in with a password only.{canAny('settings:manage') ? ' Set up email (see the README) to turn it on.' : ' Tell your administrator.'}
+        </div>
+      )}
       <div className="flex min-h-0 flex-1">
         <aside className={`${compact ? 'hidden' : 'hidden lg:block'} w-56 shrink-0 overflow-y-auto border-r border-line bg-white p-3`}>{links}</aside>
         {open && <div className="absolute inset-x-0 top-[53px] z-40 border-b border-line bg-white p-3 shadow-lg lg:hidden">{links}</div>}

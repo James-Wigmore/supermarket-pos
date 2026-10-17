@@ -2,8 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { BranchSelect } from '../components/BranchSelect';
-import { Badge, Button, DataTable, ErrorNote, Input, Loading, PageHeader, Panel, Tabs, useToast } from '../components/ui';
+import { Badge, Button, DataTable, ErrorNote, Input, Loading, Modal, PageHeader, Panel, Tabs, useToast } from '../components/ui';
 import { api } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { isDesktop } from '../lib/desktop';
 import { label } from '../lib/format';
 import { loadSettings, useBranches, usePage } from '../lib/queries';
@@ -16,6 +17,7 @@ const ROLES: Role[] = ['SUPER_ADMIN', 'MANAGER', 'CASHIER', 'STOCK_OFFICER', 'AC
 const General = () => {
   const toast = useToast();
   const client = useQueryClient();
+  const { session } = useAuth();
   const query = useQuery({ queryKey: ['settings'], queryFn: loadSettings });
   const [draft, setS] = useState<SettingsType | null>(null);
   const s = draft ?? query.data ?? null;
@@ -36,6 +38,17 @@ const General = () => {
           {ROLES.map((r) => <Input key={r} label={label(r)} inputMode="decimal" value={s.discountLimitPercent[r]} onChange={(e) => setS({ ...s, discountLimitPercent: { ...s.discountLimitPercent, [r]: Number(e.target.value) || 0 } })} />)}
         </div>
         <p className="mt-2 text-sm text-muted">Discounts above a cashier’s limit need a manager’s credentials at the till.</p>
+      </Panel>
+      <Panel title="Email login approval">
+        <p className="mb-3 text-sm text-muted">People in these roles must approve every sign-in from an email sent to their address. Anyone else can turn it on for themselves under Security.</p>
+        {!session?.loginApproval.configured && <p role="alert" className="mb-3 text-sm font-medium text-danger">Email is not set up on this server, so approval is OFF for everyone and sign-in uses a password only. Set SMTP_HOST, EMAIL_FROM and PUBLIC_BASE_URL (see the README) and restart the server.</p>}
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
+          {ROLES.map((r) => (
+            <label key={r} className="flex items-center gap-2 text-sm font-medium">
+              <input type="checkbox" checked={s.loginApprovalRequiredRoles.includes(r)} onChange={(e) => setS({ ...s, loginApprovalRequiredRoles: e.target.checked ? [...s.loginApprovalRequiredRoles, r] : s.loginApprovalRequiredRoles.filter((x) => x !== r) })} /> {label(r)}
+            </label>
+          ))}
+        </div>
       </Panel>
       <Panel title="Stock and loyalty">
         <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={s.allowNegativeStock} onChange={(e) => setS({ ...s, allowNegativeStock: e.target.checked })} /> Allow selling items that are out of stock (stock goes negative)</label>
@@ -70,14 +83,40 @@ const Branches = () => {
   );
 };
 
+const EditRegister = ({ register, onClose }: { register: Register; onClose: () => void }) => {
+  const client = useQueryClient();
+  const toast = useToast();
+  const [name, setName] = useState(register.name);
+  const save = useMutation({
+    mutationFn: () => api(`/registers/${register.id}`, { method: 'PATCH', body: { name } }),
+    onSuccess: () => { toast('success', 'Register renamed'); void client.invalidateQueries({ queryKey: ['registers'] }); onClose(); },
+  });
+  return (
+    <Modal open onClose={onClose} title="Rename register" width="sm" footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={() => save.mutate()} loading={save.isPending} disabled={!name.trim()}>Save</Button></>}>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (name.trim()) save.mutate(); }}>
+        <Input label="Register name" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        <ErrorNote error={save.error} />
+        <button type="submit" hidden />
+      </form>
+    </Modal>
+  );
+};
+
 const Registers = () => {
+  const [renaming, setRenaming] = useState<Register | null>(null);
   const client = useQueryClient();
   const toast = useToast();
   const [branchId, setBranchId] = useState('');
   const [name, setName] = useState('');
   const list = usePage<Register>('registers', '/registers', { pageSize: 100, branchId: branchId || undefined });
   const add = useMutation({ mutationFn: () => api('/registers', { method: 'POST', body: { name, branchId: branchId || undefined } }), onSuccess: () => { toast('success', 'Register added'); setName(''); void client.invalidateQueries({ queryKey: ['registers'] }); } });
+  const setActive = useMutation({
+    mutationFn: (r: Register) => api(`/registers/${r.id}`, { method: 'PATCH', body: { isActive: !r.isActive } }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ['registers'] }),
+    onError: (err) => toast('error', err.message),
+  });
   return (
+    <>
     <Panel className="!p-0">
       <div className="flex flex-wrap items-end gap-3 border-b border-line p-4">
         <BranchSelect value={branchId} onChange={setBranchId} />
@@ -85,8 +124,11 @@ const Registers = () => {
         <Button onClick={() => add.mutate()} disabled={!name} loading={add.isPending}>Add register</Button>
         <ErrorNote error={add.error} />
       </div>
-      <DataTable rowKey={(r) => r.id} rows={list.data?.data} loading={list.isLoading} columns={[{ header: 'Register', cell: (r) => <b>{r.name}</b> }, { header: 'Status', cell: (r) => (r.isActive ? <Badge tone="good">Active</Badge> : <Badge>Inactive</Badge>) }]} />
+      <DataTable rowKey={(r) => r.id} rows={list.data?.data} loading={list.isLoading} columns={[{ header: 'Register', cell: (r) => <b>{r.name}</b> }, { header: 'Status', cell: (r) => (r.isActive ? <Badge tone="good">Active</Badge> : <Badge>Inactive</Badge>) },
+        { header: '', align: 'right', cell: (r) => <span className="flex justify-end gap-1"><Button size="sm" variant="secondary" onClick={() => setRenaming(r)}>Rename</Button><Button size="sm" variant="ghost" onClick={() => setActive.mutate(r)}>{r.isActive ? 'Deactivate' : 'Activate'}</Button></span> }]} />
     </Panel>
+    {renaming && <EditRegister register={renaming} onClose={() => setRenaming(null)} />}
+    </>
   );
 };
 

@@ -16,6 +16,8 @@ import { authorizeAction } from './approval.service';
 import { priceCart, type PricedCart } from './cart.service';
 import { addStock, removeStock } from './stock.service';
 
+const MAX_HELD_SALES = 20;
+
 const saleInclude = {
   items: { orderBy: { name: 'asc' } },
   payments: true,
@@ -55,10 +57,15 @@ const createSaleTx = (actor: Actor, input: CreateSaleInput) =>
     const session = await tx.cashierSession.findUnique({ where: { id: input.sessionId } });
     if (!session || session.cashierId !== actor.id) throw notFound('Session');
     branchFor(actor, session.branchId);
-    if (session.status !== 'OPEN' && !input.offline) throw conflict('Your shift is closed, open a new shift to sell');
 
     const now = new Date();
-    const soldAt = input.offline && input.soldAt && input.soldAt < now ? input.soldAt : now;
+    const claimed = input.offline && input.soldAt ? input.soldAt : now;
+    const soldAt = claimed > now ? now : claimed;
+    if (soldAt < session.openedAt) throw badRequest('The sale time is before the shift started');
+    // A closed shift only accepts late uploads of sales that really happened while it was open.
+    if (session.status !== 'OPEN' && !(input.offline && session.closedAt && soldAt <= session.closedAt)) {
+      throw conflict('Your shift is closed, open a new shift to sell');
+    }
     const cart = await priceCart(tx, input.items, soldAt);
     await authorizeCart(tx, actor, cart, input, session.branchId);
     const { change, recorded } = settlePayments(cart.total, input.payments);
@@ -176,6 +183,7 @@ export const getReceipt = async (actor: Actor, id: string) => {
 
 export const holdSale = async (actor: Actor, label: string | undefined, payload: unknown) => {
   if (!actor.branchId) throw badRequest('Held sales require a branch');
+  if ((await prisma.heldSale.count({ where: { userId: actor.id } })) >= MAX_HELD_SALES) throw conflict('Too many held sales, resume or clear some first');
   return prisma.heldSale.create({ data: { branchId: actor.branchId, userId: actor.id, label, payload: payload as Prisma.InputJsonValue } });
 };
 

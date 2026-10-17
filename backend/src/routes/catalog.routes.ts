@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { crudRouter } from '../lib/crud';
+import { conflict } from '../lib/errors';
+import { assertCategoryNameFree } from '../services/category.service';
 import { P } from '../lib/permissions';
 import { prisma } from '../lib/prisma';
 import { authorize } from '../middleware/auth';
@@ -9,16 +11,26 @@ import { amount, dateInput, id, idParams } from '../validators/common';
 const name = z.string().trim().min(1).max(100);
 const blankToUndefined = (v: unknown) => (v === '' ? undefined : v);
 
+const categoryName = name.transform((value) => value.replace(/\s+/g, ' '));
+
+const rejectCategoryInUse = async (category: Record<string, unknown>) => {
+  const used = await prisma.product.count({ where: { categoryId: category.id as string } });
+  if (used) throw conflict(`“${category.name}” is assigned to ${used} product${used === 1 ? '' : 's'}. Reassign them to another category first.`);
+};
+
 export const categoryRouter = crudRouter({
   entity: 'Category',
   delegate: prisma.category,
   read: P.PRODUCT_READ,
   write: P.PRODUCT_WRITE,
-  createSchema: z.object({ name }),
-  updateSchema: z.object({ name }),
+  createSchema: z.object({ name: categoryName }),
+  updateSchema: z.object({ name: categoryName }),
   search: ['name'],
   orderBy: { name: 'asc' },
+  include: { _count: { select: { products: true } } },
   deletable: true,
+  beforeSave: (data, id) => assertCategoryNameFree(prisma, data.name as string, id),
+  beforeDelete: rejectCategoryInUse,
 });
 
 const customerFields = {

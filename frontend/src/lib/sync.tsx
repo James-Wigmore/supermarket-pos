@@ -59,7 +59,6 @@ export const SyncProvider = ({ children }: { children: ReactNode }) => {
     window.addEventListener('cloud:refresh', checkCloud);
     // Initial probe of connectivity and the local queue (external systems), results arrive asynchronously.
     void check();
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void checkCloud();
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void refreshCounts();

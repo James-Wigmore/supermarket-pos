@@ -3,8 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Empty, Loading } from './components/ui';
-import { api } from './lib/api';
 import { useAuth } from './lib/auth';
+import { loadSetupStatus } from './lib/queries';
 import { Login } from './pages/Login';
 import { Setup } from './pages/Setup';
 import { Pos } from './pages/pos/Pos';
@@ -40,37 +40,38 @@ const page = (any: string[], node: ReactNode) => <Guard any={any}>{node}</Guard>
 
 export const App = () => {
   const { session, loading } = useAuth();
-  const setup = useQuery({ queryKey: ['setup'], queryFn: () => api<{ needsSetup: boolean }>('/setup/status'), enabled: !session });
+  const setup = useQuery({ queryKey: ['setup'], queryFn: loadSetupStatus, enabled: !session });
   if (loading || (!session && setup.isLoading)) return <Loading />;
+
   if (!session && setup.data?.needsSetup) return <Setup />;
   return (
     <Suspense fallback={<Loading />}>
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      {session ? (
-        <Route element={<Layout />}>
-          <Route index element={<Home />} />
-          <Route path="pos" element={page(['sale:create'], <Pos />)} />
-          <Route path="products" element={page(['product:read'], <Products />)} />
-          <Route path="receiving" element={page(['stock:receive'], <Receiving />)} />
-          <Route path="inventory" element={page(['stock:read'], <Inventory />)} />
-          <Route path="purchases" element={page(['purchase:read'], <Purchases />)} />
-          <Route path="suppliers" element={page(['supplier:read'], <Suppliers />)} />
-          <Route path="sales" element={page(['sale:read'], <Sales />)} />
-          <Route path="shifts" element={page(['session:own'], <Shifts />)} />
-          <Route path="promotions" element={page(['promotion:manage'], <Promotions />)} />
-          <Route path="customers" element={page(['customer:read'], <Customers />)} />
-          <Route path="expenses" element={page(['expense:read'], <Expenses />)} />
-          <Route path="reports" element={page(['report:read'], <Reports />)} />
-          <Route path="audit" element={page(['audit:read'], <Audit />)} />
-          <Route path="users" element={page(['user:manage'], <Users />)} />
-          <Route path="settings" element={page(['settings:manage'], <Settings />)} />
-          <Route path="*" element={<Empty title="Page not found" />} />
-        </Route>
-      ) : (
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      )}
-    </Routes>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        {session ? (
+          <Route element={<Layout />}>
+            <Route index element={<Home />} />
+            <Route path="pos" element={page(['sale:create'], <Pos />)} />
+            <Route path="products" element={page(['product:read'], <Products />)} />
+            <Route path="receiving" element={page(['stock:receive'], <Receiving />)} />
+            <Route path="inventory" element={page(['stock:read'], <Inventory />)} />
+            <Route path="purchases" element={page(['purchase:read'], <Purchases />)} />
+            <Route path="suppliers" element={page(['supplier:read'], <Suppliers />)} />
+            <Route path="sales" element={page(['sale:read'], <Sales />)} />
+            <Route path="shifts" element={page(['session:own'], <Shifts />)} />
+            <Route path="promotions" element={page(['promotion:manage'], <Promotions />)} />
+            <Route path="customers" element={page(['customer:read'], <Customers />)} />
+            <Route path="expenses" element={page(['expense:read'], <Expenses />)} />
+            <Route path="reports" element={page(['report:read'], <Reports />)} />
+            <Route path="audit" element={page(['audit:read'], <Audit />)} />
+            <Route path="users" element={page(['user:manage'], <Users />)} />
+            <Route path="settings" element={page(['settings:manage'], <Settings />)} />
+            <Route path="*" element={<Empty title="Page not found" />} />
+          </Route>
+        ) : (
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        )}
+      </Routes>
     </Suspense>
   );
 };

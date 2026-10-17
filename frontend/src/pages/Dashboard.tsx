@@ -10,6 +10,7 @@ interface Dash {
   today: { transactions: number; revenue: number; items: number; grossProfit: number };
   payments: { method: string; amount: number }[]; trend: { day: string; revenue: number; transactions: number }[];
   stockValue: number; lowStockCount: number; outOfStockCount: number;
+  expiry: { windowDays: number; expiringSoon: number; expired: number };
   lowStock: { id: string; name: string; quantity: number; minStock: number }[];
   recent: { id: string; receiptNo: string; total: number; soldAt: string; status: string; cashier: string }[];
   cashiers: { cashier: string; transactions: number; revenue: number }[];
@@ -28,13 +29,14 @@ export const Dashboard = () => {
       <ErrorNote error={q.error} />
       {!d ? <Loading /> : (
         <div className="space-y-5">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
             <Stat label="Revenue today" value={money(d.today.revenue)} />
             <Stat label="Gross profit" value={money(d.today.grossProfit)} />
             <Stat label="Transactions" value={fmtNum(d.today.transactions)} />
             <Stat label="Items sold" value={fmtNum(d.today.items)} />
             <Stat label="Stock value (at cost)" value={money(d.stockValue)} />
             <Stat label="Low / out of stock" value={`${d.lowStockCount} / ${d.outOfStockCount}`} tone={d.outOfStockCount ? 'bad' : d.lowStockCount ? 'warn' : undefined} />
+            <Stat label={`Expiring in ${d.expiry.windowDays} days / expired`} value={`${d.expiry.expiringSoon} / ${d.expiry.expired}`} tone={d.expiry.expired ? 'bad' : d.expiry.expiringSoon ? 'warn' : undefined} hint="Batches still in stock" />
           </div>
           <div className="grid gap-5 xl:grid-cols-3">
             <Panel title="Sales, last 14 days" className="xl:col-span-2">

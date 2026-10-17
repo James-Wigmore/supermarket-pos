@@ -1,10 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { Role } from '@prisma/client';
 import request from 'supertest';
+import { vi } from 'vitest';
 import { createApp } from '../src/app';
+import { env } from '../src/config/env';
 import { prisma, transact } from '../src/lib/prisma';
+import { DEFAULT_SETTINGS, saveSettings } from '../src/lib/settings';
 import { resetApprovalLocks } from '../src/services/approval.service';
 import { hashPassword } from '../src/services/auth.service';
+import * as mail from '../src/services/email.service';
 import { createProduct } from '../src/services/product.service';
 import { addStock } from '../src/services/stock.service';
 import type { Actor } from '../src/types';
@@ -17,7 +21,7 @@ const TABLES = [
   'ReturnItem', 'Return', 'Payment', 'SaleItem', 'Sale', 'HeldSale', 'CashierSession', 'Register', 'StockMovement',
   'ProductBatch', 'StockLevel', 'PurchaseItem', 'Purchase', 'SupplierPayment', 'SupplierPrice', 'Promotion', 'PriceHistory',
   'Barcode', 'ExternalProductCache', 'Product', 'Category', 'Supplier', 'Customer', 'Expense', 'Setting', 'Counter',
-  'SyncState', 'SyncLog', 'User', 'Branch',
+  'SyncState', 'SyncLog', 'LoginApproval', 'User', 'Branch',
 ];
 
 export const resetDb = async () => {
@@ -41,8 +45,12 @@ export const createUserIn = async (role: Role, branchId: string | null, tag = ''
   return { id: user.id, email, token: await login(email), actor: { id: user.id, name: user.name, email, role, branchId } as Actor };
 };
 
+/** Email approval is required for admins and managers by default; most tests sign users in with a password only. */
+export const NO_APPROVAL = { ...DEFAULT_SETTINGS, loginApprovalRequiredRoles: [] };
+
 export const createWorld = async () => {
   await resetDb();
+  await saveSettings(NO_APPROVAL);
   const branch = await prisma.branch.create({ data: { code: 'MAIN', name: 'Main' } });
   const other = await prisma.branch.create({ data: { code: 'OTHER', name: 'Other' } });
   const users = {} as Users;
@@ -92,3 +100,24 @@ export const openShift = async (world: Awaited<ReturnType<typeof createWorld>>, 
 export const sellBody = (sessionId: string, items: object[], payments: object[], extra: object = {}) => ({
   clientId: randomUUID(), sessionId, items, payments, ...extra,
 });
+
+export const loginRaw = (email: string, password = PASSWORD) => request(app).post('/api/auth/login').send({ email, password });
+
+/** Pretends a mail server is configured and captures every email instead of sending it. Call `restore()` afterwards. */
+export const withEmail = () => {
+  const outbox: mail.EmailMessage[] = [];
+  Object.assign(env, { SMTP_HOST: 'smtp.test', EMAIL_FROM: 'pos@shop.test', PUBLIC_BASE_URL: 'https://pos.shop.test' });
+  const spy = vi.spyOn(mail, 'sendEmail').mockImplementation(async (message) => { outbox.push(message); });
+  return {
+    outbox,
+    failWith: (error: Error) => spy.mockImplementation(async (message) => { outbox.push(message); throw error; }),
+    restore: () => { Object.assign(env, { SMTP_HOST: undefined, EMAIL_FROM: undefined, PUBLIC_BASE_URL: undefined, SMTP_PASS: undefined, SMTP_USER: undefined }); spy.mockRestore(); },
+  };
+};
+
+/** The approve or reject link (path and token) inside a captured email. */
+export const linkIn = (message: mail.EmailMessage, action: 'approve' | 'reject') => {
+  const match = new RegExp(`https://pos\\.shop\\.test(/api/auth/${action})\\?token=([\\w-]+)`).exec(message.text);
+  if (!match) throw new Error(`No ${action} link in email`);
+  return { path: match[1]!, token: match[2]! };
+};

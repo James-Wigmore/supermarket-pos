@@ -13,6 +13,7 @@ export const settingsSchema = z.object({
   loyalty: z.object({ enabled: z.boolean(), unitAmount: z.number().positive() }),
   receipt: z.object({ storeName: z.string().min(1), header: z.string(), footer: z.string() }),
   expiryAlertDays: z.number().int().min(1).max(365),
+  loginApprovalRequiredRoles: z.array(z.enum(Role)).default(['SUPER_ADMIN', 'MANAGER']),
 });
 
 export type Settings = z.infer<typeof settingsSchema>;
@@ -26,6 +27,7 @@ export const DEFAULT_SETTINGS: Settings = {
   loyalty: { enabled: false, unitAmount: 1000 },
   receipt: { storeName: 'Supermarket', header: '', footer: 'Thank you for shopping with us' },
   expiryAlertDays: 30,
+  loginApprovalRequiredRoles: ['SUPER_ADMIN', 'MANAGER'],
 };
 
 let cache: { value: Settings; at: number } | null = null;
@@ -34,8 +36,9 @@ let cache: { value: Settings; at: number } | null = null;
 export const getSettings = async (db: Db = prisma): Promise<Settings> => {
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.value;
   const row = await db.setting.findUnique({ where: { key: KEY } });
-  const stored = (row?.value ?? {}) as Partial<Settings>;
-  const value = { ...DEFAULT_SETTINGS, ...stored };
+  // Before email approval the same list was called twoFactorRequiredRoles: keep honouring it so nobody is weakened.
+  const { twoFactorRequiredRoles, ...stored } = (row?.value ?? {}) as Partial<Settings> & { twoFactorRequiredRoles?: Settings['loginApprovalRequiredRoles'] };
+  const value = { ...DEFAULT_SETTINGS, ...(twoFactorRequiredRoles ? { loginApprovalRequiredRoles: twoFactorRequiredRoles } : {}), ...stored };
   cache = { value, at: Date.now() };
   return value;
 };

@@ -14,3 +14,5 @@ desktop/stage/
 client_secret*.json
 google.bin
 desktop/release/
+
+*.zip

@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
-import { Badge, Button, Confirm, DataTable, ErrorNote, Input, Modal, PageHeader, Pagination, Panel, Select, inputCls, useToast } from '../components/ui';
+import { useState, type ReactNode } from 'react';
+import { Badge, Button, Confirm, DataTable, ErrorNote, Input, Modal, PageHeader, Pagination, Panel, Select, Tabs, inputCls, useToast } from '../components/ui';
+import { Categories } from './Categories';
 import { ApiError, api, downloadFile } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { date, fmtNum, money, num, currencyCode } from '../lib/format';
-import { useDebounced } from '../lib/hooks';
+import { errorMessage, useDebounced } from '../lib/hooks';
 import { usePage, useRefList } from '../lib/queries';
 import type { LookupResult, Named, Product } from '../lib/types';
 
@@ -577,83 +578,26 @@ const PriceModal = ({
   );
 };
 
-export const Products = () => {
+const MAX_LABELS = 100; // the label sheet accepts at most 100 products per print
+
+const ProductList = ({ tabs }: { tabs: ReactNode }) => {
   const { can } = useAuth();
   const toast = useToast();
   const client = useQueryClient();
 
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<Product | null | 'new'>(null);
   const [pricing, setPricing] = useState<Product | null>(null);
   const [deleting, setDeleting] = useState<Product | null>(null);
 
   const q = useDebounced(search);
+  const list = usePage<Product>('products', '/products', { search: q, page, pageSize: 25 });
+  const rows = list.data?.data ?? [];
 
-  const list = usePage<Product>('products', '/products', {
-    search: q,
-    page,
-    pageSize: 25,
-  });
-
-  const products = list.data?.data ?? [];
-
-  const allVisibleSelected =
-    products.length > 0 &&
-    products.every((p) => selectedIds.has(p.id));
-
-  const toggleSelected = (id: string) => {
-    setSelectedIds((current) => {
-      const next = new Set(current);
-
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-
-      return next;
-    });
-  };
-
-  const toggleAllVisible = () => {
-    setSelectedIds((current) => {
-      const next = new Set(current);
-
-      if (allVisibleSelected) {
-        products.forEach((p) => next.delete(p.id));
-      } else {
-        products.forEach((p) => next.add(p.id));
-      }
-
-      return next;
-    });
-  };
-
-  const clearSelection = () => {
-    setSelectedIds(new Set());
-  };
-
-  const printSelected = () => {
-    if (!selectedIds.size) return;
-
-    void downloadFile(
-      '/products/labels.pdf',
-      { ids: [...selectedIds].join(',') },
-      'labels.pdf'
-    );
-  };
-
-  const printCurrentPage = () => {
-    if (!products.length) return;
-
-    void downloadFile(
-      '/products/labels.pdf',
-      { ids: products.map((p) => p.id).join(',') },
-      'labels.pdf'
-    );
-  };
+  const toggle = (id: string) => setSelected((cur) => { const next = new Set(cur); if (!next.delete(id)) next.add(id); return next; });
+  const printLabels = (ids: string[]) => void downloadFile('/products/labels.pdf', { ids: ids.join(',') }, 'labels.pdf').catch((err) => toast('error', errorMessage(err)));
 
   const del = useMutation({
     mutationFn: (id: string) =>
@@ -682,188 +626,38 @@ export const Products = () => {
 
   return (
     <>
-      <PageHeader
-        title="Products"
-        subtitle="Catalogue, barcodes and prices"
-      >
-        <input
-          aria-label="Search products"
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
-          }}
-          placeholder="Search name, SKU, barcode"
-          className={`${inputCls} !w-64`}
-        />
-
-        <Button
-          variant="secondary"
-          onClick={toggleAllVisible}
-          disabled={!products.length}
-        >
-          {allVisibleSelected ? 'Clear visible' : 'Select all visible'}
-        </Button>
-
-        <Button
-          variant="secondary"
-          onClick={printSelected}
-          disabled={!selectedIds.size}
-        >
-          Print selected{selectedIds.size ? ` (${selectedIds.size})` : ''}
-        </Button>
-
-        <Button
-          variant="ghost"
-          onClick={clearSelection}
-          disabled={!selectedIds.size}
-        >
-          Clear selection
-        </Button>
-
-        <Button
-          variant="secondary"
-          onClick={printCurrentPage}
-          disabled={!products.length}
-        >
-          Print all (this page)
-        </Button>
-
-        {can('product:write') && (
-          <Button onClick={() => setEditing('new')}>
-            New product
-          </Button>
-        )}
+      <PageHeader title="Products" subtitle="Catalogue, barcodes and prices">
+        <input aria-label="Search products" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search name, SKU, barcode" className={`${inputCls} !w-64`} />
+        <Button variant="secondary" onClick={() => printLabels(rows.map((p) => p.id))} disabled={!rows.length}>Print labels (this page)</Button>
+        {can('product:write') && <Button onClick={() => setEditing('new')}>New product</Button>}
       </PageHeader>
-
-      {selectedIds.size > 0 && (
-        <div className="mb-3 rounded-field bg-brand-soft px-3 py-2 text-sm text-brand-dark">
-          {selectedIds.size} product{selectedIds.size === 1 ? '' : 's'} selected
-        </div>
-      )}
-
+      {tabs}
       <Panel className="!p-0">
-        <DataTable
-          rowKey={(p) => p.id}
-          rows={products}
-          loading={list.isLoading}
-          onRowClick={(p) =>
-            can('product:write') && setEditing(p)
-          }
-          empty={
-            <p className="p-10 text-center text-muted">
-              No products match.{' '}
-              {can('product:write') &&
-                'Create one or scan a barcode in Receiving.'}
-            </p>
-          }
+        <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2 text-sm">
+          <Button size="sm" variant="secondary" onClick={() => setSelected((cur) => new Set([...cur, ...rows.map((p) => p.id)]))} disabled={!rows.length}>Select all</Button>
+          <Button size="sm" variant="secondary" onClick={() => setSelected(new Set())} disabled={!selected.size}>Clear selection</Button>
+          <span className="text-muted" aria-live="polite">
+            {selected.size} selected{selected.size > MAX_LABELS && ` (print up to ${MAX_LABELS} at a time)`}
+            {(list.data?.meta.totalPages ?? 1) > 1 && ' · Select all covers this page of results'}
+          </span>
+          <Button size="sm" className="ml-auto" onClick={() => printLabels([...selected])} disabled={!selected.size || selected.size > MAX_LABELS}>Print Selected Labels</Button>
+        </div>
+        <DataTable rowKey={(p) => p.id} rows={rows} loading={list.isLoading} onRowClick={(p) => can('product:write') && setEditing(p)}
+          empty={<p className="p-10 text-center text-muted">No products match. {can('product:write') && 'Create one or scan a barcode in Receiving.'}</p>}
           columns={[
-            {
-              header: '',
-              cell: (p) => (
-                <input
-                  type="checkbox"
-                  aria-label={`Select ${p.name}`}
-                  checked={selectedIds.has(p.id)}
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={() => toggleSelected(p.id)}
-                />
-              ),
-            },
-
-            {
-              header: 'Product',
-              cell: (p) => (
-                <>
-                  <div className="font-semibold">{p.name}</div>
-                  <div className="text-xs text-muted">
-                    {[p.brand, p.category?.name, p.sku]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </div>
-                </>
-              ),
-            },
-
-            {
-              header: 'Barcode',
-              cell: (p) => (
-                <span className="font-mono text-xs">
-                  {p.barcodes[0]?.code ?? '—'}
-                </span>
-              ),
-            },
-
-            {
-              header: 'Price',
-              cell: (p) => (p.price ? money(p.price) : '—'),
-              align: 'right',
-            },
-
-            {
-              header: 'Stock',
-              cell: (p) => (
-                <span
-                  className={
-                    num(p.stock) <= 0
-                      ? 'font-semibold text-danger'
-                      : num(p.stock) <= num(p.minStock)
-                        ? 'font-semibold text-warn'
-                        : ''
-                  }
-                >
-                  {fmtNum(p.stock)} {p.unit}
-                </span>
-              ),
-              align: 'right',
-            },
-
-            {
-              header: 'Status',
-              cell: (p) =>
-                p.isActive ? (
-                  <Badge tone="good">Active</Badge>
-                ) : (
-                  <Badge>Inactive</Badge>
-                ),
-            },
-
-            {
-              header: '',
-              cell: (p) => (
-                <span
-                  className="flex justify-end gap-1"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {can('price:write') && (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => setPricing(p)}
-                    >
-                      Change price
-                    </Button>
-                  )}
-
-                  {can('product:delete') && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setDeleting(p)}
-                    >
-                      Delete
-                    </Button>
-                  )}
-                </span>
-              ),
-            },
-          ]}
-        />
-
-        <Pagination
-          meta={list.data?.meta}
-          onPage={setPage}
-        />
+            { header: 'Select', cell: (p) => <input type="checkbox" className="size-4 accent-brand" checked={selected.has(p.id)} onChange={() => toggle(p.id)} onClick={(e) => e.stopPropagation()} aria-label={`Select ${p.name}`} /> },
+            { header: 'Product', cell: (p) => <><div className="font-semibold">{p.name}</div><div className="text-xs text-muted">{[p.brand, p.category?.name, p.sku].filter(Boolean).join(' · ')}</div></> },
+            { header: 'Barcode', cell: (p) => <span className="font-mono text-xs">{p.barcodes[0]?.code ?? '—'}</span> },
+            { header: 'Price', cell: (p) => (p.price ? money(p.price) : '—'), align: 'right' },
+            { header: 'Stock', cell: (p) => <span className={num(p.stock) <= 0 ? 'font-semibold text-danger' : num(p.stock) <= num(p.minStock) ? 'font-semibold text-warn' : ''}>{fmtNum(p.stock)} {p.unit}</span>, align: 'right' },
+            { header: 'Status', cell: (p) => (p.isActive ? <Badge tone="good">Active</Badge> : <Badge>Inactive</Badge>) },
+            { header: '', cell: (p) => (
+              <span className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                {can('price:write') && <Button size="sm" variant="secondary" onClick={() => setPricing(p)}>Change price</Button>}
+                {can('product:delete') && <Button size="sm" variant="ghost" onClick={() => setDeleting(p)}>Delete</Button>}
+              </span>) },
+          ]} />
+        <Pagination meta={list.data?.meta} onPage={setPage} />
       </Panel>
 
       {editing && (
@@ -890,6 +684,18 @@ export const Products = () => {
         onConfirm={() => deleting && del.mutate(deleting.id)}
         loading={del.isPending}
       />
+    </>
+  );
+};
+
+/** Both tabs stay mounted so a label selection survives a visit to Categories. */
+export const Products = () => {
+  const [tab, setTab] = useState<'products' | 'categories'>('products');
+  const tabs = <Tabs value={tab} onChange={setTab} tabs={[{ id: 'products', label: 'Products' }, { id: 'categories', label: 'Categories' }]} />;
+  return (
+    <>
+      <div hidden={tab !== 'products'}><ProductList tabs={tabs} /></div>
+      <div hidden={tab !== 'categories'}><Categories tabs={tabs} /></div>
     </>
   );
 };

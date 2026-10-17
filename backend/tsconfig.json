@@ -16,5 +16,5 @@
     "rootDir": ".",
     "types": ["node"]
   },
-  "include": ["src", "tests", "prisma/seed.ts", "prisma/seed-admin.ts", "prisma/migrate.ts", "prisma.config.ts", "vitest.config.mts"]
+  "include": ["src", "tests", "prisma/seed.ts", "prisma/seed-admin.ts", "prisma/recover-account.ts", "prisma/migrate.ts", "prisma.config.ts", "vitest.config.mts"]
 }

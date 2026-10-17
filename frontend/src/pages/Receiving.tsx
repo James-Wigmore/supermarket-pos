@@ -1,10 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
+import { BranchField } from '../components/BranchField';
 import { Badge, Button, DataTable, ErrorNote, Input, Modal, PageHeader, Panel, Select, useToast } from '../components/ui';
 import { api } from '../lib/api';
-import { fmtNum, money, num, currencyCode } from '../lib/format';
+import { fmtNum, money, num, uuid, currencyCode } from '../lib/format';
 import { errorMessage } from '../lib/hooks';
-import { useRefList } from '../lib/queries';
+import { useBranchChoice, useRefList } from '../lib/queries';
 import type { LookupProduct, LookupResult, Named, Product, Suggestion } from '../lib/types';
 
 interface Line { key: string; productId: string; name: string; unit: string; quantity: number; unitCost: number; batchNo: string; expiryDate: string; tracksExpiry: boolean }
@@ -40,12 +41,14 @@ export const Receiving = () => {
   const toast = useToast();
   const client = useQueryClient();
   const suppliers = useRefList<Named>('/suppliers');
+  const branch = useBranchChoice();
   const [supplierId, setSupplierId] = useState('');
   const [scan, setScan] = useState('');
   const [pending, setPending] = useState<Pending | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
   const [unknown, setUnknown] = useState<{ barcode: string; suggestion?: Suggestion } | null>(null);
   const [reviewing, setReviewing] = useState(false);
+  const clientRef = useRef(uuid()); // a repeated confirm must not receive the same delivery twice
   const scanRef = useRef<HTMLInputElement>(null);
   const qtyRef = useRef<HTMLInputElement>(null);
   const focusScan = () => setTimeout(() => scanRef.current?.focus(), 0);
@@ -59,7 +62,7 @@ export const Receiving = () => {
     const code = scan.trim();
     if (!code) return;
     try {
-      const r = await api<LookupResult>(`/products/lookup/${encodeURIComponent(code)}`, { query: { external: true, supplierId: supplierId || undefined } });
+      const r = await api<LookupResult>(`/products/lookup/${encodeURIComponent(code)}`, { query: { external: true, supplierId: supplierId || undefined, branchId: branch.branchId || undefined } });
       setScan('');
       if (r.source === 'internal') beginLine(r.product);
       else setUnknown({ barcode: code, suggestion: r.source === 'external' ? r.suggestion : undefined });
@@ -79,8 +82,8 @@ export const Receiving = () => {
   };
 
   const confirm = useMutation({
-    mutationFn: () => api('/purchases/deliveries', { method: 'POST', body: { supplierId, items: lines.map((l) => ({ productId: l.productId, quantity: l.quantity, unitCost: l.unitCost, batchNo: l.batchNo || undefined, expiryDate: l.expiryDate ? new Date(l.expiryDate).toISOString() : undefined })) } }),
-    onSuccess: () => { toast('success', `Delivery received: ${lines.length} products added to stock`); setLines([]); setReviewing(false); void client.invalidateQueries(); focusScan(); },
+    mutationFn: () => api('/purchases/deliveries', { method: 'POST', body: { clientRef: clientRef.current, supplierId, branchId: branch.branchId || undefined, items: lines.map((l) => ({ productId: l.productId, quantity: l.quantity, unitCost: l.unitCost, batchNo: l.batchNo || undefined, expiryDate: l.expiryDate ? new Date(l.expiryDate).toISOString() : undefined })) } }),
+    onSuccess: () => { toast('success', `Delivery received: ${lines.length} products added to stock`); setLines([]); setReviewing(false); clientRef.current = uuid(); void client.invalidateQueries(); focusScan(); },
   });
 
   const total = lines.reduce((s, l) => s + l.quantity * l.unitCost, 0);
@@ -92,10 +95,11 @@ export const Receiving = () => {
       <div className="grid gap-4 xl:grid-cols-[420px_1fr]">
         <Panel>
           <div className="space-y-4">
+            <BranchField choice={branch} />
             <Select label="Supplier" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
               <option value="">Select supplier…</option>{suppliers.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </Select>
-            <Input ref={scanRef} label="Scan barcode" value={scan} autoFocus disabled={!supplierId} onChange={(e) => setScan(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void lookup(); } }} placeholder={supplierId ? 'Scan next item' : 'Choose a supplier first'} />
+            <Input ref={scanRef} label="Scan barcode" value={scan} autoFocus disabled={!supplierId || branch.missing} onChange={(e) => setScan(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void lookup(); } }} placeholder={branch.missing ? 'Choose a branch first' : supplierId ? 'Scan next item' : 'Choose a supplier first'} />
             {p && pending && (
               <form onSubmit={(e) => { e.preventDefault(); addLine(); }} className="space-y-3 rounded-panel border-2 border-brand bg-brand-soft/40 p-4">
                 <div>
@@ -118,7 +122,7 @@ export const Receiving = () => {
           </div>
         </Panel>
 
-        <Panel title={`Delivery (${lines.length} products)`} actions={<Button onClick={() => setReviewing(true)} disabled={!lines.length}>Review and confirm</Button>} className="min-w-0">
+        <Panel title={`Delivery (${lines.length} products)`} actions={<Button onClick={() => setReviewing(true)} disabled={!lines.length || branch.missing}>Review and confirm</Button>} className="min-w-0">
           <DataTable rowKey={(l) => l.key} rows={lines} empty={<p className="py-10 text-center text-muted">Nothing scanned yet. The delivery list builds up here.</p>}
             columns={[
               { header: 'Product', cell: (l) => <><div className="font-medium">{l.name}</div>{l.expiryDate && <div className="text-xs text-muted">Batch {l.batchNo || '—'} · expires {l.expiryDate}</div>}</> },
@@ -129,11 +133,11 @@ export const Receiving = () => {
         </Panel>
       </div>
 
-      {unknown && <NewProductModal barcode={unknown.barcode} suggestion={unknown.suggestion} supplierId={supplierId} onClose={() => { setUnknown(null); focusScan(); }} onCreated={(created) => { setUnknown(null); void api<LookupResult>(`/products/lookup/${created.barcodes[0]?.code ?? ''}`, { query: { supplierId: supplierId || undefined } }).then((r) => r.source === 'internal' && beginLine(r.product)); }} />}
+      {unknown && <NewProductModal barcode={unknown.barcode} suggestion={unknown.suggestion} supplierId={supplierId} onClose={() => { setUnknown(null); focusScan(); }} onCreated={(created) => { setUnknown(null); void api<LookupResult>(`/products/lookup/${created.barcodes[0]?.code ?? ''}`, { query: { supplierId: supplierId || undefined, branchId: branch.branchId || undefined } }).then((r) => r.source === 'internal' && beginLine(r.product)); }} />}
 
       <Modal open={reviewing} onClose={() => setReviewing(false)} title="Confirm delivery" width="lg"
         footer={<><Button variant="secondary" onClick={() => setReviewing(false)}>Keep editing</Button><Button onClick={() => confirm.mutate()} loading={confirm.isPending}>Confirm and update stock</Button></>}>
-        <p className="mb-3 text-sm text-muted">{suppliers.data?.find((s) => s.id === supplierId)?.name} · {lines.length} products · <b className="text-ink">{money(total)}</b>. Stock changes only when you confirm.</p>
+        <p className="mb-3 text-sm text-muted">{branch.isAdmin && `${branch.name} · `}{suppliers.data?.find((s) => s.id === supplierId)?.name} · {lines.length} products · <b className="text-ink">{money(total)}</b>. Stock changes only when you confirm.</p>
         <DataTable rowKey={(l) => l.key} rows={lines} columns={[{ header: 'Product', cell: (l) => <>{l.name} {l.tracksExpiry && <Badge>Expiry {l.expiryDate}</Badge>}</> }, { header: 'Qty', cell: (l) => fmtNum(l.quantity), align: 'right' }, { header: 'Unit cost', cell: (l) => money(l.unitCost), align: 'right' }, { header: 'Total', cell: (l) => money(l.quantity * l.unitCost), align: 'right' }]} />
         <div className="mt-3"><ErrorNote error={confirm.error} /></div>
       </Modal>
