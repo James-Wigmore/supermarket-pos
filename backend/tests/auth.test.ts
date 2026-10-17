@@ -26,6 +26,22 @@ describe('authentication', () => {
     expect(wrong.body.error.message).toBe(unknown.body.error.message);
   });
 
+  it('lets a new user self-register as a cashier and sign in with the normalized email', async () => {
+    const branchId = world.branch.id;
+    const res = await request(app).post('/api/auth/signup').send({
+      name: 'New Cashier',
+      email: 'New.Cashier+Test@SHOP.TEST',
+      password: 'Password123!',
+      branchId,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.user.email).toBe('new.cashier+test@shop.test');
+    expect(res.body.user.role).toBe('CASHIER');
+    const login = await request(app).post('/api/auth/login').send({ email: 'new.cashier+test@shop.test', password: 'Password123!' });
+    expect(login.status).toBe(200);
+    expect(login.body.user.email).toBe('new.cashier+test@shop.test');
+  });
+
   it('requires a valid token', async () => {
     expect((await request(app).get('/api/products')).status).toBe(401);
     expect((await request(app).get('/api/products').set(auth('garbage'))).status).toBe(401);

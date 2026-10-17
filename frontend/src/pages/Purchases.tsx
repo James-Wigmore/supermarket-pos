@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { BranchField } from '../components/BranchField';
-import { Badge, Button, DataTable, ErrorNote, Input, Modal, PageHeader, Pagination, Panel, Select, useToast } from '../components/ui';
+import { ReferenceSelect } from '../components/ReferenceSelect';
+import { Badge, Button, DataTable, ErrorNote, Input, Modal, PageHeader, Pagination, Panel, useToast } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { date, dateTime, fmtNum, label, money, num } from '../lib/format';
@@ -16,9 +17,10 @@ interface PurchaseDetail extends PurchaseRow { items: PurchaseItem[] }
 const TONE = { ORDERED: 'warn', RECEIVED: 'good', CANCELLED: 'neutral' } as const;
 
 const NewOrder = ({ onClose }: { onClose: () => void }) => {
+  const { can } = useAuth();
   const client = useQueryClient();
   const toast = useToast();
-  const suppliers = useRefList<Supplier>('/suppliers');
+  const suppliers = useRefList<Supplier>('/suppliers', true, { isActive: true });
   const branch = useBranchChoice();
   const [supplierId, setSupplierId] = useState('');
   const [search, setSearch] = useState('');
@@ -35,7 +37,7 @@ const NewOrder = ({ onClose }: { onClose: () => void }) => {
     <Modal open onClose={onClose} title="New purchase order" width="lg" footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={() => save.mutate()} disabled={!valid} loading={save.isPending}>Create order</Button></>}>
       <div className="space-y-4">
         <BranchField choice={branch} />
-        <Select label="Supplier" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}><option value="">Select…</option>{suppliers.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select>
+        <ReferenceSelect label="Supplier" path="/suppliers" options={suppliers.data ?? []} value={supplierId} onChange={setSupplierId} canAdd={can('supplier:write')} emptyLabel="Select…" />
         <div className="relative">
           <Input label="Add product" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name, SKU or barcode" />
           {found.data && search.length >= 2 && (

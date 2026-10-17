@@ -209,9 +209,11 @@ cd frontend && npm run lint && npm test && npm run build
 
 Backend tests create a temporary SQLite file for each run and delete it afterwards; your `pos.db` is never touched.
 
-## 5. Deploy
+## 5. Production deployment
 
-The cloud deployment (Render + Vercel + PostgreSQL) is being replaced by a Windows desktop app. The old configuration is kept in `legacy/` for reference and no longer matches the backend.
+The supported production package is the Windows desktop installer. Tag a release (for example `v1.0.0`) matching `desktop/package.json`; GitHub Actions runs the full checks, builds the installer on Windows and publishes it as a GitHub Release. See [DEPLOYMENT.md](DEPLOYMENT.md) for release and hosted-web requirements.
+
+Vercel hosts only the frontend. A hosted browser deployment also requires the API on a persistent Node host with durable storage for the SQLite database; Vercel serverless storage is not suitable. Do not use the legacy PostgreSQL hosting files as a deployment recipe: they do not match the current SQLite backend.
 
 ## 6. How the main flows work
 

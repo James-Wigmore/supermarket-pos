@@ -7,8 +7,13 @@ module.exports = {
   electronVersion,
   // The app is assembled in `stage` first; the installer lands in `release`.
   directories: { app: 'stage', output: 'release', buildResources: 'packaging' },
-  // Plain files (no asar archive): the UI is served from disk and native modules load without unpacking.
-  asar: false,
+  // Native SQLite binaries are unpacked; the rest of the application is archived.
+  asar: true,
+  extraResources: [
+    { from: 'stage/node_modules/.prisma', to: 'app.asar.unpacked/node_modules/.prisma', filter: ['**/*'] },
+    { from: 'stage/node_modules/@prisma', to: 'app.asar.unpacked/node_modules/@prisma', filter: ['**/*'] },
+  ],
+  asarUnpack: ['node_modules/better-sqlite3/**'],
   // Native modules were already rebuilt for Electron when the app was staged.
   npmRebuild: false,
   win: { target: [{ target: 'nsis', arch: ['x64'] }], icon: 'icon.png' },

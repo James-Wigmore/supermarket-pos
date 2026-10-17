@@ -12,13 +12,20 @@ const branch = (id: string, name: string, isActive = true) => ({ id, name, code:
 const milk = { id: 'p1', name: 'Milk', unit: 'pcs', stock: 5, price: 1000, purchasePrice: 600, supplierPrice: null, supplier: null, tracksExpiry: false, barcodes: [{ id: 'b', code: '6001', isPrimary: true, isInternal: false }] };
 
 let branches = [branch(MAIN, 'Main Branch'), branch(KOLOLO, 'Kololo')];
+let suppliers = [{ id: 's1', name: 'Acme', isActive: true }];
 let calls: ReturnType<typeof stubApi>;
 beforeEach(() => {
   stubBrowser();
   branches = [branch(MAIN, 'Main Branch'), branch(KOLOLO, 'Kololo')];
+  suppliers = [{ id: 's1', name: 'Acme', isActive: true }];
   calls = stubApi((url, { method }) => {
     if (url === '/branches') return json(branches);
-    if (url.startsWith('/suppliers')) return json(page([{ id: 's1', name: 'Acme' }]));
+    if (url === '/suppliers' && method === 'POST') {
+      const created = { id: 's2', name: 'New Supplier', isActive: true };
+      suppliers.push(created);
+      return json(created, 201);
+    }
+    if (url.startsWith('/suppliers')) return json(page(suppliers));
     if (url.startsWith('/products/lookup/')) return json({ source: 'internal', product: milk });
     if (url === '/purchases/deliveries' && method === 'POST') return json({ id: 'po1' }, 201);
     return undefined;
@@ -81,6 +88,17 @@ describe('receiving as a super admin (no branch of their own)', () => {
     await waitFor(() => expect((screen.getByLabelText('Branch') as HTMLSelectElement).value).toBe(MAIN));
     await chooseSupplier();
     expect(scan().disabled).toBe(false);
+  });
+
+  it('adds a supplier manually from the supplier dropdown and selects it', async () => {
+    renderApp(<Receiving />);
+    await screen.findByRole('option', { name: 'Acme' });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    fireEvent.change(await screen.findByLabelText('Supplier name'), { target: { value: 'New Supplier' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.url === '/suppliers')).toBe(true));
+    expect((screen.getByLabelText('Supplier') as HTMLSelectElement).value).toBe('s2');
   });
 });
 

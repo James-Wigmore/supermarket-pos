@@ -10,7 +10,12 @@ export interface EmailMessage {
 }
 
 /** Email approval needs a mail server, a sender and the public address of this backend for the links. Read at call time. */
-export const emailConfigured = () => Boolean(env.SMTP_HOST && env.EMAIL_FROM && env.PUBLIC_BASE_URL);
+export const emailApprovalConfigStatus = () => {
+  const missing = ['SMTP_HOST', 'EMAIL_FROM', 'PUBLIC_BASE_URL'].filter((key) => !env[key as keyof typeof env]);
+  return { configured: missing.length === 0, missing };
+};
+
+export const emailConfigured = () => emailApprovalConfigStatus().configured;
 
 let cached: { key: string; transporter: Transporter } | null = null;
 

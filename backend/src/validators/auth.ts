@@ -22,6 +22,13 @@ export const createUserSchema = z.object({
   branchId: id.optional(),
 });
 
+export const signupSchema = z.object({
+  email,
+  name: z.string().trim().min(1).max(100),
+  password,
+  branchId: id,
+});
+
 export const updateUserSchema = z.object({
   name: z.string().trim().min(1).max(100).optional(),
   role: z.enum(Role).optional(),

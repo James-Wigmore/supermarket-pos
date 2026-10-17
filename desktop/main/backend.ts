@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import type { RequestListener } from 'node:http';
-import { basename, dirname, join } from 'node:path';
+import { basename, delimiter, dirname, join } from 'node:path';
 import { loadConfig } from './config';
 import { appRoot } from './paths';
 
@@ -46,6 +46,11 @@ export const startBackend = async (): Promise<Backend> => {
   const dbFile = join(app.getPath('userData'), 'data', 'pos.db');
   mkdirSync(dirname(dbFile), { recursive: true });
   applyPendingRestore(dbFile);
+  const unpackedModules = join(process.resourcesPath, 'app.asar.unpacked', 'node_modules');
+  if (existsSync(unpackedModules)) {
+    process.env.NODE_PATH = [unpackedModules, process.env.NODE_PATH].filter(Boolean).join(delimiter);
+    (require('node:module') as { Module: { _initPaths(): void } }).Module._initPaths();
+  }
   // A relative path avoids drive letters and spaces in Windows profile names confusing the SQLite driver.
   process.chdir(dirname(dbFile));
   Object.assign(process.env, {

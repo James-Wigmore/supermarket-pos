@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '../src/lib/prisma';
+import { ensureSeedData } from '../prisma/seed';
 import { app, auth, linkIn, resetDb, withEmail } from './helpers';
 
 const setup = {
@@ -57,5 +58,19 @@ describe('first-run setup with email configured', () => {
     await request(app).post(linkIn(mail.outbox[0]!, 'approve').path).type('form').send({ token: linkIn(mail.outbox[0]!, 'approve').token });
     const done = await request(app).post('/api/auth/login/approval/complete').send({ requestToken: first.body.requestToken });
     expect(done.body.user).toMatchObject({ role: 'SUPER_ADMIN' });
+  });
+});
+
+describe('default seed data', () => {
+  beforeEach(resetDb);
+
+  it('creates demo categories and suppliers even when a branch already exists', async () => {
+    await prisma.branch.create({ data: { code: 'MAIN', name: 'Main Branch' } });
+
+    await ensureSeedData();
+
+    expect(await prisma.category.count()).toBeGreaterThan(0);
+    expect(await prisma.supplier.count()).toBeGreaterThan(0);
+    expect(await prisma.user.findUnique({ where: { email: 'admin@supermarket.test' } })).not.toBeNull();
   });
 });

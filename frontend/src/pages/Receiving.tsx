@@ -1,11 +1,13 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { BranchField } from '../components/BranchField';
-import { Badge, Button, DataTable, ErrorNote, Input, Modal, PageHeader, Panel, Select, useToast } from '../components/ui';
+import { ReferenceSelect } from '../components/ReferenceSelect';
+import { Badge, Button, DataTable, ErrorNote, Input, Modal, PageHeader, Panel, useToast } from '../components/ui';
 import { api } from '../lib/api';
 import { fmtNum, money, num, uuid, currencyCode } from '../lib/format';
 import { errorMessage } from '../lib/hooks';
 import { useBranchChoice, useRefList } from '../lib/queries';
+import { useAuth } from '../lib/auth';
 import type { LookupProduct, LookupResult, Named, Product, Suggestion } from '../lib/types';
 
 interface Line { key: string; productId: string; name: string; unit: string; quantity: number; unitCost: number; batchNo: string; expiryDate: string; tracksExpiry: boolean }
@@ -38,9 +40,10 @@ const NewProductModal = ({ barcode, suggestion, supplierId, onClose, onCreated }
 };
 
 export const Receiving = () => {
+  const { can } = useAuth();
   const toast = useToast();
   const client = useQueryClient();
-  const suppliers = useRefList<Named>('/suppliers');
+  const suppliers = useRefList<Named>('/suppliers', true, { isActive: true });
   const branch = useBranchChoice();
   const [supplierId, setSupplierId] = useState('');
   const [scan, setScan] = useState('');
@@ -96,9 +99,7 @@ export const Receiving = () => {
         <Panel>
           <div className="space-y-4">
             <BranchField choice={branch} />
-            <Select label="Supplier" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-              <option value="">Select supplier…</option>{suppliers.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </Select>
+            <ReferenceSelect label="Supplier" path="/suppliers" options={suppliers.data ?? []} value={supplierId} onChange={setSupplierId} canAdd={can('supplier:write')} emptyLabel="Select supplier…" />
             <Input ref={scanRef} label="Scan barcode" value={scan} autoFocus disabled={!supplierId || branch.missing} onChange={(e) => setScan(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void lookup(); } }} placeholder={branch.missing ? 'Choose a branch first' : supplierId ? 'Scan next item' : 'Choose a supplier first'} />
             {p && pending && (
               <form onSubmit={(e) => { e.preventDefault(); addLine(); }} className="space-y-3 rounded-panel border-2 border-brand bg-brand-soft/40 p-4">

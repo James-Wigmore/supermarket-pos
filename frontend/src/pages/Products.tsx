@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
-import { Badge, Button, Confirm, DataTable, ErrorNote, Input, Modal, PageHeader, Pagination, Panel, Select, Tabs, inputCls, useToast } from '../components/ui';
+import { Badge, Button, Confirm, DataTable, ErrorNote, Input, Modal, PageHeader, Pagination, Panel, Tabs, inputCls, useToast } from '../components/ui';
 import { Categories } from './Categories';
+import { ReferenceSelect } from '../components/ReferenceSelect';
 import { ApiError, api, downloadFile } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { date, fmtNum, money, num, currencyCode } from '../lib/format';
@@ -33,7 +34,7 @@ const ProductForm = ({ product, onClose }: { product: Product | null; onClose: (
   const toast = useToast();
   const { can } = useAuth();
   const categories = useRefList<Named>('/categories');
-  const suppliers = useRefList<Named>('/suppliers');
+  const suppliers = useRefList<Named>('/suppliers', true, { isActive: true });
   const [f, setF] = useState<FormState>(product ? fromProduct(product) : EMPTY);
   const [note, setNote] = useState('');
   const [looking, setLooking] = useState(false);
@@ -234,31 +235,23 @@ const ProductForm = ({ product, onClose }: { product: Product | null; onClose: (
           onChange={(e) => set('manufacturer', e.target.value)}
         />
 
-        <Select
+        <ReferenceSelect
           label="Category"
+          path="/categories"
+          options={categories.data ?? []}
           value={f.categoryId}
-          onChange={(e) => set('categoryId', e.target.value)}
-        >
-          <option value="">None</option>
-          {categories.data?.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </Select>
+          onChange={(value) => set('categoryId', value)}
+          canAdd={can('product:write')}
+        />
 
-        <Select
+        <ReferenceSelect
           label="Supplier"
+          path="/suppliers"
+          options={suppliers.data ?? []}
           value={f.supplierId}
-          onChange={(e) => set('supplierId', e.target.value)}
-        >
-          <option value="">None</option>
-          {suppliers.data?.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </Select>
+          onChange={(value) => set('supplierId', value)}
+          canAdd={can('supplier:write')}
+        />
 
         <Input
           label="Unit"

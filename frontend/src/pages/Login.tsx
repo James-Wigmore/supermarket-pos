@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Link, Navigate, useLocation } from 'react-router-dom';
 import { Button, ErrorNote, Input } from '../components/ui';
 import { ApiError } from '../lib/api';
 import { useAuth, type ApprovalState, type LoginStep } from '../lib/auth';
@@ -141,6 +141,9 @@ export const Login = () => {
         <ErrorNote error={error} />
         <Button type="submit" size="lg" className="w-full" loading={busy}>Sign in</Button>
         <p className="text-center text-xs text-muted">Forgot your password? Ask your manager to reset it.</p>
+        <p className="text-center text-xs text-muted">
+          Need an account? <Link to="/signup" className="font-medium text-brand hover:underline">Create one</Link>
+        </p>
       </form>
     </Card>
   );
