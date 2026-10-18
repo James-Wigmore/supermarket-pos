@@ -23,6 +23,9 @@ legacy/     Previous cloud setup (Render/Railway/Vercel configs, PostgreSQL sche
 
 Requirements: Node 22+. No database server is needed: the data lives in one SQLite file.
 
+npm 12 and newer block the install scripts of dependencies unless they are approved. The packages that need them (the SQLite driver,
+Prisma, esbuild) are already approved by the `allowScripts` entry in `package.json`, so `npm ci` works the same on every npm version.
+
 ```bash
 # 1. Backend
 cd backend
@@ -69,6 +72,8 @@ npm run desktop:dev           # builds backend + frontend + desktop, stages desk
 npm run desktop:build         # same, without launching
 ```
 
+The first `desktop:dev` run downloads the Electron program once (it is no longer fetched when the packages are installed).
+
 Electron needs its own build of the SQLite driver, so the app is assembled in `desktop/stage` (its own `node_modules`,
 rebuilt for Electron). Your normal `backend/node_modules` stay untouched and `npm test` keeps working.
 For UI work with hot reload: run `npm run dev:frontend`, then start Electron with `POS_DEV_URL=http://localhost:5173`
@@ -94,7 +99,8 @@ exports to Excel with the selected date range, generated locally.
 ### Building the Windows installer
 
 Build on **Windows 10/11** (or let GitHub Actions do it, see below). Requirements: Node 22+, and, only if a prebuilt SQLite driver
-is not available for your Electron version, the "Desktop development with C++" tools of Visual Studio Build Tools.
+is not available for your Electron version (the SQLite driver publishes one for Electron up to 42, so keep Electron on the 42 line unless
+it is upgraded together with the driver and tested), the "Desktop development with C++" tools of Visual Studio Build Tools.
 
 ```powershell
 npm run install:all        # once

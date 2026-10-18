@@ -1,0 +1,9 @@
+# One line-ending style (LF) for every text file in the repository. This stops the
+# "LF will be replaced by CRLF" warnings on Windows and keeps diffs free of line-ending noise.
+* text=auto eol=lf
+
+*.png binary
+*.ico binary
+*.woff2 binary
+*.exe binary
+*.zip binary

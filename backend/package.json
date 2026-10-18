@@ -54,5 +54,11 @@
   },
   "overrides": {
     "uuid": "^11.1.1"
+  },
+  "allowScripts": {
+    "@prisma/engines": true,
+    "better-sqlite3": true,
+    "esbuild": true,
+    "prisma": true
   }
 }

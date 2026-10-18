@@ -47,6 +47,8 @@ const manifest = () => {
     author: desktop.author,
     main: 'desktop/main/main.js',
     dependencies: { ...pinned, ...desktop.dependencies },
+    // npm 12 blocks dependency install scripts unless approved; the SQLite driver needs its own to fetch the native binary.
+    allowScripts: { 'better-sqlite3': true },
   };
 };
 
@@ -85,6 +87,8 @@ const stageApp = () => {
 };
 
 const launch = () => {
+  // Since Electron 42 the package no longer downloads its program when it is installed: fetch it once, on first launch.
+  if (!existsSync(at('desktop/node_modules/electron/path.txt'))) run('npx', ['--no-install', 'install-electron'], at('desktop'));
   const electron = createRequire(at('desktop/package.json'))('electron');
   const { ELECTRON_RUN_AS_NODE: _ignored, ...env } = process.env;
   spawn(electron, [stage], { stdio: 'inherit', env }).on('exit', (code) => process.exit(code ?? 0));
