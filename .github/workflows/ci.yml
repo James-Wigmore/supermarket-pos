@@ -30,3 +30,5 @@ jobs:
         with: { node-version: 22, cache: npm, cache-dependency-path: desktop/package-lock.json }
       - run: npm ci --ignore-scripts
       - run: npm run typecheck && npm test
+      # The release workflow copies desktop/dist into the installer, so a build that produces nothing must fail here, not at release time.
+      - run: npm run build && test -f dist/main/main.js
