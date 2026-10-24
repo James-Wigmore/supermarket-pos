@@ -16,3 +16,7 @@ google.bin
 desktop/release/
 
 *.zip
+*.exe
+*.patch
+*.zip
+backend/pos.db.bak-*
