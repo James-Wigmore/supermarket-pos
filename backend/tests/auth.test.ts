@@ -42,6 +42,16 @@ describe('authentication', () => {
     expect(login.body.user.email).toBe('new.cashier+test@shop.test');
   });
 
+  it('lists active branches for the sign-up form without a session, names only', async () => {
+    await prisma.branch.update({ where: { id: world.other.id }, data: { isActive: false } });
+    const res = await request(app).get('/api/auth/branches');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([{ id: world.branch.id, name: world.branch.name }]);
+    const closed = await request(app).post('/api/auth/signup').send({ name: 'X', email: 'x@shop.test', password: 'Password123!', branchId: world.other.id });
+    expect(closed.status).toBe(404);
+    await prisma.branch.update({ where: { id: world.other.id }, data: { isActive: true } }); // the world is shared by the tests below
+  });
+
   it('requires a valid token', async () => {
     expect((await request(app).get('/api/products')).status).toBe(401);
     expect((await request(app).get('/api/products').set(auth('garbage'))).status).toBe(401);

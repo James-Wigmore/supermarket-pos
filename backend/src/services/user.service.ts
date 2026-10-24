@@ -45,7 +45,7 @@ export const createUser = async (actor: Actor, input: CreateUserInput) => {
 
 export const selfSignUp = async (input: { name: string; email: string; password: string; branchId: string }) => {
   const branch = await prisma.branch.findUnique({ where: { id: input.branchId } });
-  if (!branch) throw notFound('Branch');
+  if (!branch?.isActive) throw notFound('Branch');
   if (await prisma.user.findUnique({ where: { email: input.email }, select: { id: true } })) throw conflict('An account already uses that email');
 
   const user = await prisma.user.create({

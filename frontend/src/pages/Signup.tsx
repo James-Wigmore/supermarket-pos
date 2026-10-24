@@ -15,7 +15,7 @@ export const Signup = () => {
   const [f, setF] = useState(INITIAL);
   const [error, setError] = useState<unknown>();
   const [busy, setBusy] = useState(false);
-  const branches = useQuery({ queryKey: ['ref', '/branches'], queryFn: () => api<Branch[]>('/branches') });
+  const branches = useQuery({ queryKey: ['signup-branches'], queryFn: () => api<Branch[]>('/auth/branches') });
 
   if (session) return <Navigate to="/" replace />;
 
@@ -55,13 +55,13 @@ export const Signup = () => {
         </div>
         <Input label="Your name" value={f.name} onChange={(e) => set('name', e.target.value)} autoFocus required />
         <Input label="Email" type="email" autoComplete="username" value={f.email} onChange={(e) => set('email', e.target.value)} required />
-        <Select label="Branch" value={f.branchId} onChange={(e) => set('branchId', e.target.value)} required>
-          <option value="">Select a branch</option>
+        <Select label="Branch" value={f.branchId} onChange={(e) => set('branchId', e.target.value)} disabled={!branches.data?.length} required>
+          <option value="">{branches.isLoading ? 'Loading branches…' : branches.data?.length ? 'Select a branch' : 'No branch available'}</option>
           {branches.data?.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
         </Select>
         <Input label="Password" type="password" autoComplete="new-password" value={f.password} onChange={(e) => set('password', e.target.value)} hint="At least 8 characters" required />
         <Input label="Repeat password" type="password" autoComplete="new-password" value={f.confirm} onChange={(e) => set('confirm', e.target.value)} error={f.confirm && f.confirm !== f.password ? 'The passwords do not match' : undefined} required />
-        <ErrorNote error={error} />
+        <ErrorNote error={error ?? branches.error} />
         <div className="flex items-center justify-between gap-2">
           <Link to="/login" className="text-sm font-medium text-brand hover:underline">Back to sign in</Link>
           <Button type="submit" loading={busy} disabled={!ready}>Create account</Button>

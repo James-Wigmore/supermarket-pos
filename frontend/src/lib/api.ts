@@ -57,10 +57,14 @@ const send = async (path: string, options: Options) => {
     if ((err as Error).name === 'AbortError') throw err;
     throw new ApiError(0, 'Cannot reach the server. Check the connection.', 'NETWORK');
   }
-  if (res.ok) return res;
+  // A site that has no API behind it (for example a hosting rewrite) answers with its own web page instead of data.
+  const isPage = (res.headers.get('Content-Type') ?? '').includes('text/html');
+  if (res.ok && !isPage) return res;
+  if (res.ok) throw new ApiError(0, 'This site cannot reach its server. The server address is not set up (VITE_API_URL).', 'NO_API');
   const payload = (await res.json().catch(() => null)) as { error?: { message?: string; code?: string } } | null;
   if (res.status === 401 && token) window.dispatchEvent(new Event('auth:expired'));
-  throw new ApiError(res.status, payload?.error?.message ?? res.statusText, payload?.error?.code);
+  const fallback = isPage ? 'This site cannot reach its server. The server address is not set up (VITE_API_URL).' : res.statusText || `The server answered with error ${res.status}.`;
+  throw new ApiError(res.status, payload?.error?.message || fallback, payload?.error?.code);
 };
 
 export const api = async <T>(path: string, options: Options = {}): Promise<T> => {

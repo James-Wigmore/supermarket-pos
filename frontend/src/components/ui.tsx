@@ -107,7 +107,7 @@ export const Loading = () => (
 );
 
 export const ErrorNote = ({ error }: { error: unknown }) =>
-  error ? <p role="alert" className="rounded-field bg-danger-soft px-3 py-2 text-sm text-danger">{error instanceof Error ? error.message : String(error)}</p> : null;
+  error ? <p role="alert" className="rounded-field bg-danger-soft px-3 py-2 text-sm text-danger">{(error instanceof Error ? error.message : String(error)) || 'Something went wrong. Please try again.'}</p> : null;
 
 interface Column<T> { header: string; cell: (row: T) => ReactNode; align?: 'right'; className?: string }
 interface TableProps<T> { columns: Column<T>[]; rows: T[] | undefined; loading?: boolean; empty?: ReactNode; rowKey: (row: T) => string; onRowClick?: (row: T) => void }

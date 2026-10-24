@@ -17,7 +17,7 @@ Installed apps look for new versions in **this repository's GitHub Releases**, s
 cannot be read by an installed app without a secret saved on every shop PC, so if the repository is ever made private, installed apps
 simply stop finding updates.) No tokens or extra settings are needed: the release workflow already has permission to publish releases.
 
-**Releasing:** raise `version` in `desktop/package.json`, commit, push the matching tag (`v1.2.0`). The workflow runs the checks, builds the
+**Releasing:** from a clean `main`, run `npm run release -- patch` (or `minor`, `major`, or an exact version such as `1.2.0`; add `--dry` to only print the steps). It runs the checks, raises `version` in `desktop/package.json`, commits, pushes the matching tag (`v1.2.0`) and `main`. By hand, that is: raise the version, commit, push the tag. The workflow runs the checks, builds the
 installer with this repository as its update source and publishes `Supermarket-POS-Setup.exe` and `latest.yml` to the release. Installed
 apps then offer the update to administrators within about 6 hours (or at once via *Check for updates*). Manually started workflow runs only
 create a downloadable artifact: nothing is published, so nothing is offered.

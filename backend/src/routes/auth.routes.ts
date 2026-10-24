@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { prisma } from '../lib/prisma';
 import * as auth from '../services/auth.service';
 import { approvalStatus, cancelApproval } from '../services/login-approval.service';
 import * as users from '../services/user.service';
@@ -12,6 +13,11 @@ export const authRouter = Router();
 authRouter.post('/login', loginIpLimiter, loginLimiter, validate({ body: loginSchema }), async (req, res) => {
   const { email, password } = req.body;
   res.json(await auth.login(email, password, { ip: req.ip, userAgent: req.headers['user-agent'] }));
+});
+
+// The sign-up form is shown before anyone is signed in, so it needs the branch names without a session. Names only.
+authRouter.get('/branches', loginIpLimiter, async (_req, res) => {
+  res.json(await prisma.branch.findMany({ where: { isActive: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } }));
 });
 
 authRouter.post('/signup', loginIpLimiter, loginLimiter, validate({ body: signupSchema }), async (req, res) => {
