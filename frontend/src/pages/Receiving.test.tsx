@@ -102,6 +102,25 @@ describe('receiving as a super admin (no branch of their own)', () => {
   });
 });
 
+describe('supplier payment on a delivery', () => {
+  beforeEach(() => { who.role = 'MANAGER'; });
+
+  it('sends paid: true only when the user confirms the supplier has been paid', async () => {
+    renderApp(<Receiving />);
+    await chooseSupplier();
+    fireEvent.click(screen.getByLabelText('Supplier paid'));
+    await receiveOneItem();
+    expect((await confirmDelivery()).body).toMatchObject({ supplierId: 's1', paid: true });
+  });
+
+  it('defaults to not paid and omits the flag', async () => {
+    renderApp(<Receiving />);
+    await chooseSupplier();
+    await receiveOneItem();
+    expect((await confirmDelivery()).body).not.toHaveProperty('paid');
+  });
+});
+
 describe('receiving as a branch user', () => {
   beforeEach(() => { who.role = 'STOCK_OFFICER'; });
 

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 export const createWindow = (url: string) => {
   const win = new BrowserWindow({
     width: 1366, height: 820, minWidth: 1024, minHeight: 640, show: false, autoHideMenuBar: true,
-    backgroundColor: '#f3f5f2', title: 'Supermarket POS',
+    backgroundColor: '#f6f3ea', title: 'Supermarket POS',
     webPreferences: { preload: join(__dirname, '../preload/preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   win.once('ready-to-show', () => win.show());

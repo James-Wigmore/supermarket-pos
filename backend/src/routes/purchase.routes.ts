@@ -7,7 +7,7 @@ import { authorize } from '../middleware/auth';
 import { queryOf, validate } from '../middleware/validate';
 import * as purchases from '../services/purchase.service';
 import { idParams } from '../validators/common';
-import { createPurchaseSchema, purchaseListQuery, receivePurchaseSchema, supplierPaymentSchema } from '../validators/purchase';
+import { createPurchaseSchema, purchaseListQuery, purchasePaymentSchema, receivePurchaseSchema, supplierPaymentSchema } from '../validators/purchase';
 
 export const purchaseRouter = Router();
 const read = authorize(P.PURCHASE_READ);
@@ -33,6 +33,11 @@ purchaseRouter.get('/:id', read, validate({ params: idParams }), async (req, res
 
 purchaseRouter.post('/:id/receive', authorize(P.STOCK_RECEIVE), validate({ params: idParams, body: receivePurchaseSchema }), async (req, res) => {
   res.json(await purchases.receivePurchase(req.actor!, req.params.id as string, req.body.items));
+});
+
+// Paying suppliers is money handling: it needs supplier:write (not just stock:receive).
+purchaseRouter.patch('/:id/payment', authorize(P.SUPPLIER_WRITE), validate({ params: idParams, body: purchasePaymentSchema }), async (req, res) => {
+  res.json(await purchases.setPurchasePayment(req.actor!, req.params.id as string, req.body.paid));
 });
 
 purchaseRouter.post('/:id/cancel', write, validate({ params: idParams }), async (req, res) => {

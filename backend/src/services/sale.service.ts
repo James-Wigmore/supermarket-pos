@@ -14,6 +14,7 @@ import type { Actor } from '../types';
 import type { CartLine, CreateSaleInput, SaleListQuery } from '../validators/sale';
 import { authorizeAction } from './approval.service';
 import { priceCart, type PricedCart } from './cart.service';
+import { sessionSummary } from './session.service';
 import { addStock, removeStock } from './stock.service';
 
 const MAX_HELD_SALES = 20;
@@ -108,13 +109,25 @@ const createSaleTx = (actor: Actor, input: CreateSaleInput) =>
     return sale.id;
   });
 
+/** An offline sale uploaded after its shift closed changes the takings: refresh the closed shift's expected cash and variance. */
+const reconcileClosedShift = async (actor: Actor, sessionId: string) => {
+  const session = await prisma.cashierSession.findUnique({ where: { id: sessionId } });
+  if (!session || session.status !== 'CLOSED' || session.actualCash == null) return;
+  const { expectedCash } = await sessionSummary(sessionId);
+  const difference = Decimal.sub(session.actualCash, expectedCash);
+  await prisma.cashierSession.update({ where: { id: sessionId }, data: { expectedCash, difference } });
+  await audit(prisma, actor, { action: 'SESSION_RECONCILE', entity: 'CashierSession', entityId: sessionId, branchId: session.branchId, before: { expectedCash: session.expectedCash, difference: session.difference }, after: { expectedCash, difference, reason: 'Late offline sale uploaded' } });
+};
+
 /** Creates a sale. Replaying the same clientId (e.g. offline sync retry) returns the original sale. */
 export const createSale = async (actor: Actor, input: CreateSaleInput) => {
   const existing = await loadSale(prisma, { clientId: input.clientId });
   if (existing) return { sale: existing, duplicate: true };
   try {
     const id = await createSaleTx(actor, input);
-    return { sale: (await loadSale(prisma, { id }))!, duplicate: false };
+    const sale = (await loadSale(prisma, { id }))!;
+    await reconcileClosedShift(actor, sale.sessionId);
+    return { sale, duplicate: false };
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
       const raced = await loadSale(prisma, { clientId: input.clientId });

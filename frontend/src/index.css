@@ -2,19 +2,19 @@
 
 @theme {
   --font-sans: 'Public Sans Variable', 'Public Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --color-ink: #13201a;
-  --color-paper: #f3f5f2;
-  --color-line: #dce2db;
-  --color-muted: #5a6a61;
-  --color-brand: #0e6b50;
-  --color-brand-dark: #0a4f3b;
-  --color-brand-soft: #e3f1ea;
-  --color-tape: #17241d;
-  --color-amber: #f2b01e;
-  --color-danger: #b42318;
+  --color-ink: #1d2116;
+  --color-paper: #f6f3ea;
+  --color-line: #e0dccb;
+  --color-muted: #5f6652;
+  --color-brand: #4b5e2a;
+  --color-brand-dark: #36451d;
+  --color-brand-soft: #eef1dd;
+  --color-tape: #1f2415;
+  --color-amber: #e8762b;
+  --color-danger: #b3261e;
   --color-danger-soft: #fdecea;
-  --color-warn: #a15c07;
-  --color-warn-soft: #fdf1d8;
+  --color-warn: #8f5200;
+  --color-warn-soft: #fbeccd;
   --radius-field: 5px;
   --radius-panel: 12px;
 }

@@ -6,7 +6,7 @@ import type { CloudStatus } from './types';
 import { QUEUE_EVENT, queue, syncQueue } from './offline';
 
 export type ConnectionState = 'ONLINE' | 'OFFLINE' | 'SYNCING';
-interface SyncValue { state: ConnectionState; online: boolean; pending: number; failed: number; syncNow: () => Promise<void>; cloud: CloudStatus | null }
+interface SyncValue { state: ConnectionState; online: boolean; syncing: boolean; pending: number; failed: number; syncNow: () => Promise<void>; cloud: CloudStatus | null }
 
 const SyncContext = createContext<SyncValue | null>(null);
 const HEALTH_INTERVAL_MS = 15_000;

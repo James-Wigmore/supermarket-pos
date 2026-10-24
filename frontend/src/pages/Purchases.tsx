@@ -10,7 +10,7 @@ import { useDebounced } from '../lib/hooks';
 import { useBranchChoice, usePage, useRefList } from '../lib/queries';
 import type { Named, Product, Supplier } from '../lib/types';
 
-interface PurchaseRow { id: string; number: string; status: 'ORDERED' | 'RECEIVED' | 'CANCELLED'; total: string; createdAt: string; supplier: Named }
+interface PurchaseRow { id: string; number: string; status: 'ORDERED' | 'RECEIVED' | 'CANCELLED'; total: string; paymentStatus: 'PAID' | 'UNPAID'; createdAt: string; supplier: Named }
 interface PurchaseItem { id: string; quantityOrdered: string; quantityReceived: string; unitCost: string; product: { name: string; unit: string; tracksExpiry: boolean } }
 interface PurchaseDetail extends PurchaseRow { items: PurchaseItem[] }
 
@@ -98,7 +98,7 @@ export const Purchases = () => {
       <Panel className="!p-0">
         <DataTable rowKey={(p) => p.id} rows={list.data?.data} loading={list.isLoading} onRowClick={(p) => setOpen(p.id)} empty={<p className="p-10 text-center text-muted">No purchase orders yet.</p>} columns={[
           { header: 'Number', cell: (p) => <b>{p.number}</b> }, { header: 'Supplier', cell: (p) => p.supplier.name }, { header: 'Date', cell: (p) => date(p.createdAt) },
-          { header: 'Status', cell: (p) => <Badge tone={TONE[p.status]}>{label(p.status)}</Badge> }, { header: 'Total', cell: (p) => money(p.total), align: 'right' }]} />
+          { header: 'Status', cell: (p) => <Badge tone={TONE[p.status]}>{label(p.status)}</Badge> }, { header: 'Payment', cell: (p) => (p.status === 'RECEIVED' ? <Badge tone={p.paymentStatus === 'PAID' ? 'good' : 'warn'}>{p.paymentStatus === 'PAID' ? 'Paid' : 'Unpaid'}</Badge> : '—') }, { header: 'Total', cell: (p) => money(p.total), align: 'right' }]} />
         <Pagination meta={list.data?.meta} onPage={setPage} />
       </Panel>
       {creating && <NewOrder onClose={() => setCreating(false)} />}

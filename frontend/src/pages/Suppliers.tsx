@@ -8,7 +8,7 @@ import { errorMessage } from '../lib/hooks';
 import { usePage } from '../lib/queries';
 import type { Supplier } from '../lib/types';
 
-interface History { supplier: Supplier; purchases: { id: string; number: string; total: string; status: string; createdAt: string }[]; payments: { id: string; amount: string; note: string | null; createdAt: string }[] }
+interface History { supplier: Supplier; purchases: { id: string; number: string; total: string; status: string; paymentStatus: 'PAID' | 'UNPAID'; paidAmount: string; createdAt: string }[]; payments: { id: string; amount: string; note: string | null; createdAt: string }[] }
 
 const SupplierForm = ({ supplier, onClose }: { supplier: Supplier | null; onClose: () => void }) => {
   const client = useQueryClient();
@@ -42,15 +42,21 @@ const SupplierDetail = ({ supplier, onClose }: { supplier: Supplier; onClose: ()
     mutationFn: () => api(`/suppliers/${supplier.id}/payments`, { method: 'POST', body: { amount: Number(amount) } }),
     onSuccess: () => { toast('success', 'Payment recorded'); setAmount(''); void history.refetch(); void client.invalidateQueries({ queryKey: ['suppliers'] }); },
   });
+  const setPaid = useMutation({
+    mutationFn: ({ id, paid }: { id: string; paid: boolean }) => api(`/purchases/${id}/payment`, { method: 'PATCH', body: { paid } }),
+    onSuccess: (_r, { paid }) => { toast('success', paid ? 'Marked as paid' : 'Marked as unpaid'); void history.refetch(); void client.invalidateQueries({ queryKey: ['suppliers'] }); void client.invalidateQueries({ queryKey: ['purchases'] }); },
+  });
   const balance = history.data?.supplier.balance ?? supplier.balance;
   return (
     <Modal open onClose={onClose} title={supplier.name} width="lg">
       <p className="mb-1 text-sm text-muted">{[supplier.contact, supplier.phone, supplier.email].filter(Boolean).join(' · ') || 'No contact details'}</p>
       <p className="mb-4 text-lg">Balance owed: <b className={num(balance) > 0 ? 'text-danger' : ''}>{money(balance)}</b></p>
       {can('supplier:write') && <div className="mb-5 flex items-end gap-2"><Input label={`Record a payment (${currencyCode()})`} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-56" /><Button onClick={() => pay.mutate()} disabled={!(Number(amount) > 0)} loading={pay.isPending}>Record payment</Button></div>}
-      <ErrorNote error={pay.error} />
+      <ErrorNote error={pay.error ?? setPaid.error} />
       <h3 className="mb-1 mt-3 font-semibold">Purchases</h3>
-      <DataTable rowKey={(p) => p.id} rows={history.data?.purchases} loading={history.isLoading} empty={<p className="py-4 text-sm text-muted">No purchases yet.</p>} columns={[{ header: 'Order', cell: (p) => p.number }, { header: 'Date', cell: (p) => date(p.createdAt) }, { header: 'Status', cell: (p) => <Badge>{p.status}</Badge> }, { header: 'Total', cell: (p) => money(p.total), align: 'right' }]} />
+      <DataTable rowKey={(p) => p.id} rows={history.data?.purchases} loading={history.isLoading} empty={<p className="py-4 text-sm text-muted">No purchases yet.</p>} columns={[{ header: 'Order', cell: (p) => p.number }, { header: 'Date', cell: (p) => date(p.createdAt) }, { header: 'Status', cell: (p) => <Badge>{p.status}</Badge> },
+        { header: 'Payment', cell: (p) => (p.status !== 'RECEIVED' ? '—' : <span className="flex items-center gap-2"><Badge tone={p.paymentStatus === 'PAID' ? 'good' : 'warn'}>{p.paymentStatus === 'PAID' ? 'Paid' : num(p.paidAmount) > 0 ? `Part paid (${money(p.paidAmount)})` : 'Unpaid'}</Badge>{can('supplier:write') && <Button size="sm" variant="ghost" loading={setPaid.isPending && setPaid.variables?.id === p.id} onClick={() => setPaid.mutate({ id: p.id, paid: p.paymentStatus !== 'PAID' })}>{p.paymentStatus === 'PAID' ? 'Mark unpaid' : 'Mark paid'}</Button>}</span>) },
+        { header: 'Total', cell: (p) => money(p.total), align: 'right' }]} />
       <h3 className="mb-1 mt-5 font-semibold">Payments</h3>
       <DataTable rowKey={(p) => p.id} rows={history.data?.payments} empty={<p className="py-4 text-sm text-muted">No payments recorded.</p>} columns={[{ header: 'Date', cell: (p) => date(p.createdAt) }, { header: 'Note', cell: (p) => p.note ?? '' }, { header: 'Amount', cell: (p) => money(p.amount), align: 'right' }]} />
     </Modal>
@@ -82,6 +88,7 @@ export const Suppliers = () => {
       <Panel className="!p-0">
         <DataTable rowKey={(s) => s.id} rows={list.data?.data} loading={list.isLoading} onRowClick={setViewing} empty={<p className="p-10 text-center text-muted">No suppliers yet.</p>} columns={[
           { header: 'Supplier', cell: (s) => <><b>{s.name}</b>{!s.isActive && <span className="ml-2"><Badge>Inactive</Badge></span>}</> }, { header: 'Contact', cell: (s) => [s.contact, s.phone].filter(Boolean).join(' · ') || '—' },
+          { header: 'Payment', cell: (s) => (num(s.balance) > 0 ? <Badge tone="warn">Owing</Badge> : <Badge tone="good">Paid up</Badge>) },
           { header: 'Balance owed', cell: (s) => <span className={num(s.balance) > 0 ? 'font-semibold text-danger' : ''}>{money(s.balance)}</span>, align: 'right' },
           { header: '', cell: (s) => can('supplier:write') && <span className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}><Button size="sm" variant="secondary" onClick={() => setEditing(s)}>Edit</Button><Button size="sm" variant="ghost" onClick={() => setRemoving(s)}>{s.isActive ? 'Remove' : 'Restore'}</Button></span>, align: 'right' }]} />
         <Pagination meta={list.data?.meta} onPage={setPage} />

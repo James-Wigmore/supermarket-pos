@@ -1,8 +1,9 @@
 import { Prisma } from '@prisma/client';
 import { audit } from '../lib/audit';
-import { badRequest, conflict, notFound } from '../lib/errors';
-import { d, money, sum } from '../lib/money';
+import { badRequest, conflict, forbidden, notFound } from '../lib/errors';
+import { d, money, sum, ZERO } from '../lib/money';
 import { pageArgs, pageResult } from '../lib/pagination';
+import { can, P } from '../lib/permissions';
 import { prisma, transact, type Tx } from '../lib/prisma';
 import { branchFor, requireBranch } from '../lib/scope';
 import { nextNumber } from '../lib/sequence';
@@ -105,6 +106,7 @@ export const receivePurchase = (actor: Actor, id: string, lines: ReceiveLineInpu
 /** Receiving mode: a whole delivery is booked in one transaction, without a prior order. */
 /** Receiving mode books a whole delivery at once; repeating the same clientRef returns the original instead of receiving twice. */
 export const receiveDelivery = async (actor: Actor, input: CreatePurchaseInput) => {
+  if (input.paid && !can(actor.role, P.SUPPLIER_WRITE)) throw forbidden('You are not allowed to record supplier payments');
   const find = () => (input.clientRef ? prisma.purchase.findUnique({ where: { clientRef: input.clientRef }, include: purchaseInclude }) : null);
   const existing = await find();
   if (existing) return { ...existing, duplicate: true };
@@ -123,8 +125,30 @@ const receiveDeliveryTx = (actor: Actor, input: CreatePurchaseInput) =>
     const lines = items.map((item, index) => ({
       itemId: item.id, quantity: Number(item.quantityOrdered), batchNo: input.items[index]?.batchNo, expiryDate: input.items[index]?.expiryDate,
     }));
-    return receiveLines(tx, actor, purchase.id, lines);
+    const received = await receiveLines(tx, actor, purchase.id, lines);
+    return input.paid ? setPayment(tx, actor, purchase.id, true) : received;
   });
+
+const valueOf = (items: { quantityReceived: Prisma.Decimal.Value; unitCost: Prisma.Decimal.Value }[]) => sum(items.map((i) => d(i.quantityReceived).mul(i.unitCost)));
+
+/** Marks a received purchase paid or unpaid; the supplier ledger is settled (or reversed) so the balance stays true. */
+const setPayment = async (tx: Tx, actor: Actor, id: string, paid: boolean) => {
+  const purchase = await tx.purchase.findUnique({ where: { id }, include: { items: true } });
+  if (!purchase) throw notFound('Purchase');
+  branchFor(actor, purchase.branchId);
+  if (purchase.status !== 'RECEIVED') throw conflict('Only fully received purchases can be marked paid');
+  if ((purchase.paymentStatus === 'PAID') === paid) return tx.purchase.findUniqueOrThrow({ where: { id }, include: purchaseInclude });
+  const value = valueOf(purchase.items);
+  const amount = paid ? value.minus(purchase.paidAmount) : d(purchase.paidAmount).neg();
+  if (!amount.isZero()) {
+    await tx.supplierPayment.create({ data: { supplierId: purchase.supplierId, userId: actor.id, purchaseId: id, amount, note: `${paid ? 'Paid' : 'Payment reversed'}: ${purchase.number}` } });
+    await tx.supplier.update({ where: { id: purchase.supplierId }, data: { balance: { decrement: amount } } });
+  }
+  await audit(tx, actor, { action: paid ? 'PURCHASE_MARK_PAID' : 'PURCHASE_MARK_UNPAID', entity: 'Purchase', entityId: id, branchId: purchase.branchId, before: { paymentStatus: purchase.paymentStatus }, after: { paymentStatus: paid ? 'PAID' : 'UNPAID', amount: value } });
+  return tx.purchase.update({ where: { id }, data: { paymentStatus: paid ? 'PAID' : 'UNPAID', paidAmount: paid ? value : ZERO, paidAt: paid ? new Date() : null }, include: purchaseInclude });
+};
+
+export const setPurchasePayment = (actor: Actor, id: string, paid: boolean) => transact((tx) => setPayment(tx, actor, id, paid));
 
 export const cancelPurchase = (actor: Actor, id: string) =>
   transact(async (tx) => {
@@ -140,7 +164,7 @@ export const cancelPurchase = (actor: Actor, id: string) =>
 
 export const listPurchases = async (actor: Actor, q: PurchaseListQuery) => {
   const where: Prisma.PurchaseWhereInput = {
-    branchId: branchFor(actor, q.branchId), supplierId: q.supplierId, status: q.status, createdAt: { gte: q.from, lte: q.to },
+    branchId: branchFor(actor, q.branchId), supplierId: q.supplierId, status: q.status, paymentStatus: q.paymentStatus, createdAt: { gte: q.from, lte: q.to },
   };
   const [rows, total] = await Promise.all([
     prisma.purchase.findMany({ where, include: { supplier: { select: { id: true, name: true } } }, orderBy: { createdAt: 'desc' }, ...pageArgs(q) }),
@@ -162,6 +186,16 @@ export const paySupplier = (actor: Actor, supplierId: string, amount: number, no
     if (!supplier) throw notFound('Supplier');
     const payment = await tx.supplierPayment.create({ data: { supplierId, userId: actor.id, amount: money(amount), note } });
     await tx.supplier.update({ where: { id: supplierId }, data: { balance: { decrement: payment.amount } } });
+    // Settle the oldest unpaid purchases first, so purchase statuses and the balance always agree.
+    let left = d(payment.amount);
+    const open = await tx.purchase.findMany({ where: { supplierId, status: 'RECEIVED', paymentStatus: 'UNPAID' }, orderBy: { createdAt: 'asc' }, include: { items: true } });
+    for (const p of open) {
+      const outstanding = valueOf(p.items).minus(p.paidAmount);
+      const apply = left.lt(outstanding) ? left : outstanding;
+      if (left.lte(ZERO)) break;
+      await tx.purchase.update({ where: { id: p.id }, data: { paidAmount: { increment: apply }, ...(apply.gte(outstanding) ? { paymentStatus: 'PAID', paidAt: new Date() } : {}) } });
+      left = left.minus(apply);
+    }
     await audit(tx, actor, { action: 'SUPPLIER_PAYMENT', entity: 'Supplier', entityId: supplierId, after: { amount: payment.amount, note } });
     return payment;
   });

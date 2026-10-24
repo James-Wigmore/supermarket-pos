@@ -40,6 +40,21 @@ describe('offline sales and shifts', () => {
     expect((await sell(w, session, items, cash(), { offline: true, soldAt: at(openedAt.getTime() - 3_600_000) })).status).toBe(400);
     expect((await sell(w, session, items, cash(), { offline: true, soldAt: at((openedAt.getTime() + closedAt!.getTime()) / 2) })).status).toBe(201);
   });
+
+  it('refreshes the closed shift expected cash and variance when a late offline sale arrives', async () => {
+    const w = await createWorld();
+    const product = await makeProduct(w, { stock: 20 });
+    const session = await openShift(w);
+    await request(app).post(`/api/sessions/${session}/close`).set(auth(w.users.CASHIER.token)).send({ actualCash: 10000 });
+    const { openedAt, closedAt } = await prisma.cashierSession.findUniqueOrThrow({ where: { id: session } });
+    const soldAt = new Date((openedAt.getTime() + closedAt!.getTime()) / 2).toISOString();
+
+    const late = await sell(w, session, [{ productId: product.id, quantity: 1 }], cash(100000), { offline: true, soldAt });
+    expect(late.status).toBe(201);
+    const after = await prisma.cashierSession.findUniqueOrThrow({ where: { id: session } });
+    expect(Number(after.expectedCash)).toBe(10000 + Number(late.body.total));
+    expect(Number(after.difference)).toBe(-Number(late.body.total));
+  });
 });
 
 describe('quantities', () => {

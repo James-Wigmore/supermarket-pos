@@ -46,6 +46,8 @@ export const Receiving = () => {
   const suppliers = useRefList<Named>('/suppliers', true, { isActive: true });
   const branch = useBranchChoice();
   const [supplierId, setSupplierId] = useState('');
+  const [paid, setPaid] = useState(false);
+  const canPay = can('supplier:write'); // recording a payment needs the same permission as the Suppliers page
   const [scan, setScan] = useState('');
   const [pending, setPending] = useState<Pending | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
@@ -85,8 +87,8 @@ export const Receiving = () => {
   };
 
   const confirm = useMutation({
-    mutationFn: () => api('/purchases/deliveries', { method: 'POST', body: { clientRef: clientRef.current, supplierId, branchId: branch.branchId || undefined, items: lines.map((l) => ({ productId: l.productId, quantity: l.quantity, unitCost: l.unitCost, batchNo: l.batchNo || undefined, expiryDate: l.expiryDate ? new Date(l.expiryDate).toISOString() : undefined })) } }),
-    onSuccess: () => { toast('success', `Delivery received: ${lines.length} products added to stock`); setLines([]); setReviewing(false); clientRef.current = uuid(); void client.invalidateQueries(); focusScan(); },
+    mutationFn: () => api('/purchases/deliveries', { method: 'POST', body: { clientRef: clientRef.current, supplierId, branchId: branch.branchId || undefined, paid: (paid && canPay) || undefined, items: lines.map((l) => ({ productId: l.productId, quantity: l.quantity, unitCost: l.unitCost, batchNo: l.batchNo || undefined, expiryDate: l.expiryDate ? new Date(l.expiryDate).toISOString() : undefined })) } }),
+    onSuccess: () => { toast('success', `Delivery received: ${lines.length} products added to stock`); setLines([]); setPaid(false); setReviewing(false); clientRef.current = uuid(); void client.invalidateQueries(); focusScan(); },
   });
 
   const total = lines.reduce((s, l) => s + l.quantity * l.unitCost, 0);
@@ -100,6 +102,14 @@ export const Receiving = () => {
           <div className="space-y-4">
             <BranchField choice={branch} />
             <ReferenceSelect label="Supplier" path="/suppliers" options={suppliers.data ?? []} value={supplierId} onChange={setSupplierId} canAdd={can('supplier:write')} emptyLabel="Select supplier…" />
+            <fieldset className="rounded-field border border-line px-3 py-2">
+              <legend className="px-1 text-sm font-medium">Supplier payment</legend>
+              <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
+                <label className="flex items-center gap-2"><input type="radio" name="paid" checked={!paid} onChange={() => setPaid(false)} /> Not paid yet</label>
+                <label className="flex items-center gap-2"><input type="radio" name="paid" checked={paid} disabled={!canPay} onChange={() => setPaid(true)} /> Supplier paid</label>
+              </div>
+              {!canPay && <p className="mt-1 text-xs text-muted">Only managers and accountants can mark a supplier as paid. It can be updated later on the Suppliers page.</p>}
+            </fieldset>
             <Input ref={scanRef} label="Scan barcode" value={scan} autoFocus disabled={!supplierId || branch.missing} onChange={(e) => setScan(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void lookup(); } }} placeholder={branch.missing ? 'Choose a branch first' : supplierId ? 'Scan next item' : 'Choose a supplier first'} />
             {p && pending && (
               <form onSubmit={(e) => { e.preventDefault(); addLine(); }} className="space-y-3 rounded-panel border-2 border-brand bg-brand-soft/40 p-4">
@@ -138,7 +148,7 @@ export const Receiving = () => {
 
       <Modal open={reviewing} onClose={() => setReviewing(false)} title="Confirm delivery" width="lg"
         footer={<><Button variant="secondary" onClick={() => setReviewing(false)}>Keep editing</Button><Button onClick={() => confirm.mutate()} loading={confirm.isPending}>Confirm and update stock</Button></>}>
-        <p className="mb-3 text-sm text-muted">{branch.isAdmin && `${branch.name} · `}{suppliers.data?.find((s) => s.id === supplierId)?.name} · {lines.length} products · <b className="text-ink">{money(total)}</b>. Stock changes only when you confirm.</p>
+        <p className="mb-3 text-sm text-muted">{branch.isAdmin && `${branch.name} · `}{suppliers.data?.find((s) => s.id === supplierId)?.name} · {lines.length} products · <b className="text-ink">{money(total)}</b> · {paid && canPay ? 'Supplier paid' : 'Not paid yet'}. Stock changes only when you confirm.</p>
         <DataTable rowKey={(l) => l.key} rows={lines} columns={[{ header: 'Product', cell: (l) => <>{l.name} {l.tracksExpiry && <Badge>Expiry {l.expiryDate}</Badge>}</> }, { header: 'Qty', cell: (l) => fmtNum(l.quantity), align: 'right' }, { header: 'Unit cost', cell: (l) => money(l.unitCost), align: 'right' }, { header: 'Total', cell: (l) => money(l.quantity * l.unitCost), align: 'right' }]} />
         <div className="mt-3"><ErrorNote error={confirm.error} /></div>
       </Modal>

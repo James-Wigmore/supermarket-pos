@@ -1,4 +1,4 @@
-import { PurchaseStatus } from '@prisma/client';
+import { PayStatus, PurchaseStatus } from '@prisma/client';
 import { z } from 'zod';
 import { pageQuery } from '../lib/pagination';
 import { amount, dateInput, dateRange, id, positiveAmount, quantity } from './common';
@@ -15,6 +15,7 @@ export const createPurchaseSchema = z.object({
   supplierId: id,
   branchId: id.optional(),
   notes: z.string().trim().max(300).optional(),
+  paid: z.boolean().optional(),
   items: z.array(lineSchema).min(1).max(500),
 });
 
@@ -24,10 +25,13 @@ export const receivePurchaseSchema = z.object({
 
 export const supplierPaymentSchema = z.object({ amount: positiveAmount, note: z.string().trim().max(200).optional() });
 
+export const purchasePaymentSchema = z.object({ paid: z.boolean() });
+
 export const purchaseListQuery = pageQuery.extend(dateRange.shape).extend({
   supplierId: id.optional(),
   branchId: id.optional(),
   status: z.enum(PurchaseStatus).optional(),
+  paymentStatus: z.enum(PayStatus).optional(),
 });
 
 export type CreatePurchaseInput = z.infer<typeof createPurchaseSchema>;

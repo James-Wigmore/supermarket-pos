@@ -1,12 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Button, ErrorNote, Input, Loading, Panel, Select } from '../../components/ui';
 import { api } from '../../lib/api';
+import { useAuth } from '../../lib/auth';
 import type { Page, Register } from '../../lib/types';
 import { currencyCode } from '../../lib/format';
 
 export const OpenShift = () => {
   const client = useQueryClient();
+  const { can } = useAuth();
   const registers = useQuery({ queryKey: ['registers'], queryFn: () => api<Page<Register>>('/registers', { query: { isActive: true, pageSize: 50 } }) });
   const [registerId, setRegisterId] = useState('');
   const [cash, setCash] = useState('');
@@ -26,6 +29,7 @@ export const OpenShift = () => {
           <Input label={`Opening cash in drawer (${currencyCode()})`} inputMode="decimal" value={cash} onChange={(e) => setCash(e.target.value)} placeholder="0" autoFocus />
           <ErrorNote error={open.error} />
           <Button type="submit" size="lg" className="w-full" loading={open.isPending} disabled={!registers.data?.data.length}>Open shift</Button>
+          {can('dashboard:read') && <Link to="/" className="block rounded-field border border-line px-3 py-2.5 text-center text-sm font-semibold hover:bg-paper">Back to home</Link>}
           {!registers.data?.data.length && <p className="text-sm text-muted">No registers exist for this branch. Ask a manager to add one under Settings.</p>}
         </form>
       </Panel>

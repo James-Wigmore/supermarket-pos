@@ -40,10 +40,10 @@ export const Dashboard = () => {
           </div>
           <div className="grid gap-5 xl:grid-cols-3">
             <Panel title="Sales, last 14 days" className="xl:col-span-2">
-              <div className="h-64"><ResponsiveContainer><LineChart data={d.trend}><CartesianGrid stroke="#dce2db" vertical={false} /><XAxis dataKey="day" tickFormatter={(v: string) => v.slice(5)} fontSize={12} /><YAxis tickFormatter={compact} fontSize={12} width={48} /><Tooltip formatter={(v) => money(v)} /><Line dataKey="revenue" stroke="#0e6b50" strokeWidth={2.5} dot={false} name="Revenue" /></LineChart></ResponsiveContainer></div>
+              <div className="h-64"><ResponsiveContainer><LineChart data={d.trend}><CartesianGrid stroke="#e0dccb" vertical={false} /><XAxis dataKey="day" tickFormatter={(v: string) => v.slice(5)} fontSize={12} /><YAxis tickFormatter={compact} fontSize={12} width={48} /><Tooltip formatter={(v) => money(v)} /><Line dataKey="revenue" stroke="#4b5e2a" strokeWidth={2.5} dot={false} name="Revenue" /></LineChart></ResponsiveContainer></div>
             </Panel>
             <Panel title="Payment methods today">
-              {d.payments.length ? <div className="h-64"><ResponsiveContainer><BarChart data={d.payments.map((p) => ({ ...p, method: label(p.method) }))} layout="vertical"><XAxis type="number" tickFormatter={compact} fontSize={12} /><YAxis type="category" dataKey="method" width={100} fontSize={12} /><Tooltip formatter={(v) => money(v)} /><Bar dataKey="amount" fill="#f2b01e" radius={3} name="Amount" /></BarChart></ResponsiveContainer></div> : <p className="py-16 text-center text-sm text-muted">No payments yet today.</p>}
+              {d.payments.length ? <div className="h-64"><ResponsiveContainer><BarChart data={d.payments.map((p) => ({ ...p, method: label(p.method) }))} layout="vertical"><XAxis type="number" tickFormatter={compact} fontSize={12} /><YAxis type="category" dataKey="method" width={100} fontSize={12} /><Tooltip formatter={(v) => money(v)} /><Bar dataKey="amount" fill="#e8762b" radius={3} name="Amount" /></BarChart></ResponsiveContainer></div> : <p className="py-16 text-center text-sm text-muted">No payments yet today.</p>}
             </Panel>
           </div>
           <div className="grid gap-5 lg:grid-cols-2">

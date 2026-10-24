@@ -54,6 +54,11 @@ enum PromotionType {
   BOGO
 }
 
+enum PayStatus {
+  UNPAID
+  PAID
+}
+
 enum SessionStatus {
   OPEN
   CLOSED
@@ -146,6 +151,7 @@ model SupplierPayment {
   userId     String
   amount     Decimal
   note       String?
+  purchaseId String?
   createdAt  DateTime @default(now())
 
   supplier Supplier @relation(fields: [supplierId], references: [id])
@@ -296,6 +302,9 @@ model Purchase {
   branchId   String
   status     PurchaseStatus
   total      Decimal        @default(0)
+  paymentStatus PayStatus   @default(UNPAID)
+  paidAmount Decimal        @default(0)
+  paidAt     DateTime?
   notes      String?
   createdById String
   createdAt  DateTime       @default(now())
