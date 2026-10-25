@@ -1,10 +1,15 @@
 import { PaymentMethod } from '@prisma/client';
 import { z } from 'zod';
 import { pageQuery } from '../lib/pagination';
-import { amount, approvalSchema, dateRange, id, quantity } from './common';
+import { approvalSchema, dateRange, id, quantity } from './common';
 
-export const openSessionSchema = z.object({ registerId: id, openingCash: amount });
-export const closeSessionSchema = z.object({ actualCash: amount, notes: z.string().trim().max(300).optional() });
+// A cash count must be a real number: coerce alone would turn null (an unreadable entry) into 0.
+const cash = z.number().nonnegative().max(1e12);
+
+export const openSessionSchema = z.object({ registerId: id, openingCash: cash });
+export const closeSessionSchema = z.object({ actualCash: cash, notes: z.string().trim().max(300).optional() });
+
+export const recountSessionSchema = z.object({ actualCash: cash, reason: z.string().trim().min(5).max(300) });
 
 export const sessionListQuery = pageQuery.extend(dateRange.shape).extend({
   branchId: id.optional(),

@@ -5,7 +5,7 @@ import { BranchSelect } from '../components/BranchSelect';
 import { Badge, Button, DataTable, ErrorNote, Input, Modal, PageHeader, Pagination, Panel, Stat, Textarea, useToast } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { dateTime, money, num, currencyCode } from '../lib/format';
+import { dateTime, money, num, currencyCode, typed } from '../lib/format';
 import { usePage } from '../lib/queries';
 import { useSync } from '../lib/sync';
 import type { Session } from '../lib/types';
@@ -38,7 +38,7 @@ const CloseShift = ({ session }: { session: Session }) => {
   const unsent = pending + failed;
   const summary = useQuery({ queryKey: ['shift-summary', session.id], queryFn: () => api<Summary>(`/sessions/${session.id}/summary`) });
   const close = useMutation({
-    mutationFn: () => api<Session>(`/sessions/${session.id}/close`, { method: 'POST', body: { actualCash: Number(actual), notes: notes || undefined } }),
+    mutationFn: () => api<Session>(`/sessions/${session.id}/close`, { method: 'POST', body: { actualCash: typed(actual), notes: notes || undefined } }),
     onSuccess: (closed) => {
       const diff = num(closed.difference);
       toast('success', diff === 0 ? 'Shift closed. Cash balances.' : `Shift closed with a ${diff < 0 ? 'shortage' : 'surplus'} of ${money(Math.abs(diff))}`);
@@ -49,7 +49,8 @@ const CloseShift = ({ session }: { session: Session }) => {
   });
   const expected = num(summary.data?.expectedCash);
   const takings = expected - num(session.openingCash);
-  const diff = actual === '' ? null : num(actual) - expected;
+  const counted = typed(actual);
+  const diff = Number.isNaN(counted) ? null : counted - expected;
   return (
     <Panel title={`Current shift · ${session.register?.name ?? ''}`} actions={<Link className="text-sm font-semibold text-brand" to="/pos">Back to POS</Link>}>
       <p className="mb-4 text-sm text-muted">Opened {dateTime(session.openedAt)}</p>
@@ -60,7 +61,7 @@ const CloseShift = ({ session }: { session: Session }) => {
           <p className="text-3xl font-bold text-brand-dark" data-testid="expected-total">{summary.data ? money(expected) : '…'}</p>
           <p className="text-xs text-muted">Opening {money(session.openingCash)} + cash from this shift {money(takings)}</p>
         </div>
-        <Input label={`Total counted in the drawer (${currencyCode()})`} inputMode="decimal" value={actual} onChange={(e) => setActual(e.target.value)} />
+        <Input label={`Total counted in the drawer (${currencyCode()})`} inputMode="decimal" value={actual} error={actual !== '' && Number.isNaN(counted) ? 'Enter numbers only, e.g. 50000' : undefined} onChange={(e) => setActual(e.target.value)} />
         {diff !== null && <p className={`rounded-field px-3 py-2 text-sm font-semibold ${diff === 0 ? 'bg-brand-soft text-brand-dark' : 'bg-warn-soft text-warn'}`}>{diff === 0 ? 'Cash balances.' : `${diff < 0 ? 'Shortage' : 'Surplus'}: ${money(Math.abs(diff))}`}</p>}
         {unsent > 0 && (
           <div role="alert" className="rounded-field bg-warn-soft px-3 py-2 text-sm text-warn">
@@ -69,13 +70,35 @@ const CloseShift = ({ session }: { session: Session }) => {
           </div>
         )}
         <Textarea label="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
-        <div><Button onClick={() => setConfirming(true)} disabled={actual === '' || !summary.data || unsent > 0}>Close shift</Button></div>
+        <div><Button onClick={() => setConfirming(true)} disabled={Number.isNaN(counted) || !summary.data || unsent > 0}>Close shift</Button></div>
       </div>
       <Modal open={confirming} onClose={() => setConfirming(false)} title="Close this shift?" width="sm" footer={<><Button variant="secondary" onClick={() => setConfirming(false)}>Not yet</Button><Button onClick={() => close.mutate()} loading={close.isPending}>Close shift</Button></>}>
-        <p className="text-sm">You will not be able to sell on this shift afterwards. Counted cash: <b>{money(actual)}</b>, expected <b>{money(expected)}</b>.</p>
+        <p className="text-sm">You will not be able to sell on this shift afterwards. Counted cash: <b>{money(counted)}</b>, expected <b>{money(expected)}</b>.</p>
         <div className="mt-3"><ErrorNote error={close.error} /></div>
       </Modal>
     </Panel>
+  );
+};
+
+const Recount = ({ shift, onClose }: { shift: Session | null; onClose: () => void }) => {
+  const client = useQueryClient();
+  const toast = useToast();
+  const [counted, setCounted] = useState('');
+  const [reason, setReason] = useState('');
+  const amount = typed(counted);
+  const save = useMutation({
+    mutationFn: () => api(`/sessions/${shift!.id}/recount`, { method: 'POST', body: { actualCash: amount, reason } }),
+    onSuccess: () => { toast('success', 'Count corrected'); setCounted(''); setReason(''); onClose(); void client.invalidateQueries(); },
+  });
+  return (
+    <Modal open={Boolean(shift)} onClose={onClose} title="Correct the counted cash" width="sm" footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={() => save.mutate()} loading={save.isPending} disabled={Number.isNaN(amount) || reason.trim().length < 5}>Save correction</Button></>}>
+      <p className="mb-3 text-sm text-muted">Counted {money(shift?.actualCash)} against expected {money(shift?.expectedCash)}. The original count stays in the audit log.</p>
+      <div className="space-y-3">
+        <Input label={`Correct total counted (${currencyCode()})`} inputMode="decimal" value={counted} onChange={(e) => setCounted(e.target.value)} error={counted !== '' && Number.isNaN(amount) ? 'Enter numbers only, e.g. 50000' : undefined} />
+        <Textarea label="Why is it being corrected? (required)" value={reason} onChange={(e) => setReason(e.target.value)} />
+        <ErrorNote error={save.error} />
+      </div>
+    </Modal>
   );
 };
 
@@ -86,6 +109,7 @@ export const Shifts = () => {
   const current = useQuery({ queryKey: ['session'], queryFn: () => api<Session | null>('/sessions/current') });
   const list = usePage<Session>('shifts', '/sessions', { page, pageSize: 20, branchId: branchId || undefined });
   const [viewing, setViewing] = useState<string | null>(null);
+  const [recount, setRecount] = useState<Session | null>(null);
   const detail = useQuery({ queryKey: ['shift-summary', viewing], queryFn: () => api<Summary>(`/sessions/${viewing}/summary`), enabled: Boolean(viewing) });
   return (
     <>
@@ -99,7 +123,10 @@ export const Shifts = () => {
           { header: 'Variance', cell: (s) => (s.difference == null ? '—' : <span className={num(s.difference) === 0 ? '' : 'font-semibold text-danger'}>{money(s.difference)}</span>), align: 'right' }]} />
         <Pagination meta={list.data?.meta} onPage={setPage} />
       </Panel>
-      <Modal open={Boolean(viewing)} onClose={() => setViewing(null)} title="Shift summary" width="lg">{detail.data && <SummaryGrid s={detail.data} />}</Modal>
+      <Modal open={Boolean(viewing)} onClose={() => setViewing(null)} title="Shift summary" width="lg">{detail.data && <SummaryGrid s={detail.data} />}
+        {detail.data?.session.status === 'CLOSED' && can('user:manage') && <div className="mt-4"><Button variant="secondary" onClick={() => { setRecount(detail.data?.session ?? null); setViewing(null); }}>Correct the counted cash</Button></div>}
+      </Modal>
+      <Recount shift={recount} onClose={() => setRecount(null)} />
     </>
   );
 };

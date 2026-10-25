@@ -7,7 +7,7 @@ import { queryOf, validate } from '../middleware/validate';
 import { createReturn, listReturns } from '../services/return.service';
 import * as sessions from '../services/session.service';
 import { branchQuery, idParams } from '../validators/common';
-import { closeSessionSchema, createReturnSchema, openSessionSchema, sessionListQuery } from '../validators/session';
+import { closeSessionSchema, createReturnSchema, openSessionSchema, recountSessionSchema, sessionListQuery } from '../validators/session';
 
 export const sessionRouter = Router();
 
@@ -29,6 +29,11 @@ sessionRouter.get('/:id/summary', authorize(P.SESSION_OWN), validate({ params: i
 
 sessionRouter.post('/:id/close', authorize(P.SESSION_OWN), validate({ params: idParams, body: closeSessionSchema }), async (req, res) => {
   res.json(await sessions.closeSession(req.actor!, req.params.id as string, req.body.actualCash, req.body.notes));
+});
+
+// Correcting a finished count is a manager's job (user:manage, as for closing someone else's shift).
+sessionRouter.post('/:id/recount', authorize(P.USER_MANAGE), validate({ params: idParams, body: recountSessionSchema }), async (req, res) => {
+  res.json(await sessions.recountSession(req.actor!, req.params.id as string, req.body.actualCash, req.body.reason));
 });
 
 export const returnRouter = Router();

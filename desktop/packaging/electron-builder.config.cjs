@@ -6,13 +6,15 @@ const { version: electronVersion } = require('electron/package.json');
  * (the release workflow sets it to this repository; see DEPLOYMENT.md). Left empty, the build has no update source and
  * behaves exactly as it did before updates existed.
  */
-const feed = (process.env.UPDATE_FEED_REPO ?? '').trim();
+const test = process.env.POS_CHANNEL === 'test'; // test installer: own identity, own data folder, no update source
+const feed = test ? '' : (process.env.UPDATE_FEED_REPO ?? '').trim();
+const name = test ? 'Supermarket POS TEST' : 'Supermarket POS';
 if (feed && !/^[\w.-]+\/[\w.-]+$/.test(feed)) throw new Error(`UPDATE_FEED_REPO must look like "owner/repository", not "${feed}".`);
 const [owner, repo] = feed.split('/');
 
 module.exports = {
-  appId: 'com.supermarketpos.desktop',
-  productName: 'Supermarket POS',
+  appId: test ? 'com.supermarketpos.desktop.test' : 'com.supermarketpos.desktop',
+  productName: name,
   electronVersion,
   // The app is assembled in `stage` first; the installer lands in `release`.
   directories: { app: 'stage', output: 'release', buildResources: 'packaging' },
@@ -33,11 +35,11 @@ module.exports = {
     allowToChangeInstallationDirectory: true,
     createStartMenuShortcut: true,
     createDesktopShortcut: true,
-    shortcutName: 'Supermarket POS',
-    uninstallDisplayName: 'Supermarket POS',
-    // Sales and settings live in %APPDATA%\supermarket-pos and survive updates, re-installs and uninstalling.
+    shortcutName: name,
+    uninstallDisplayName: name,
+    // Sales and settings live in %APPDATA%\supermarket-pos (supermarket-pos-test for test builds) and survive updates, re-installs and uninstalling.
     deleteAppDataOnUninstall: false,
-    artifactName: 'Supermarket-POS-Setup.${ext}',
+    artifactName: test ? 'Supermarket-POS-TEST-Setup.${ext}' : 'Supermarket-POS-Setup.${ext}',
     // The installer keeps one fixed file name, so updates are always downloaded whole (no per-version block map).
     differentialPackage: false,
   },

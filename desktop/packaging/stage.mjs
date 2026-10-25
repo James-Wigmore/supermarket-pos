@@ -3,7 +3,10 @@
  * rebuilt for Electron). `--run` starts it; `--package` turns the same folder into the Windows installer
  * (desktop/release/Supermarket-POS-Setup.exe, build it on Windows).
  *
- *   node desktop/packaging/stage.mjs [--run | --package] [--no-build]
+ *   node desktop/packaging/stage.mjs [--run | --package] [--test] [--live] [--no-build]
+ *
+ * `--run` and `--test` use the test channel (data in %APPDATA%\supermarket-pos-test, installer Supermarket-POS-TEST-Setup.exe);
+ * `--live` makes `--run` use the shop's real data folder.
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -15,6 +18,9 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const at = (...parts) => join(root, ...parts);
 const stage = at('desktop', 'stage');
 const flags = new Set(process.argv.slice(2));
+// Test channel: its own data folder, identity and installer, and no update source. Running from source is always a test run (--live opts out).
+const test = flags.has('--test') || (flags.has('--run') && !flags.has('--live'));
+if (test) process.env.POS_CHANNEL = 'test';
 
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'));
 const run = (command, args, cwd) => {
@@ -81,6 +87,7 @@ const stageApp = () => {
   const changed = !existsSync(manifestFile) || readFileSync(manifestFile, 'utf8') !== next;
   copyApp();
   writeFileSync(manifestFile, next);
+  writeFileSync(join(stage, 'channel.json'), JSON.stringify({ channel: test ? 'test' : 'live' }));
   // node_modules is kept between runs and rebuilt only when the dependency list changes.
   if (changed || !existsSync(join(stage, 'node_modules'))) installDependencies();
   copyPrismaClient();
@@ -105,13 +112,13 @@ const packageInstaller = () => {
     join(unpackedModules, '@prisma', 'client', 'runtime', 'client.js'),
   ];
   if (requiredRuntimeFiles.some((file) => !existsSync(file))) throw new Error('The packaged Prisma client or runtime is missing. Check the Electron Builder extraResources configuration.');
-  const feed = (process.env.UPDATE_FEED_REPO ?? '').trim();
+  const feed = test ? '' : (process.env.UPDATE_FEED_REPO ?? '').trim();
   if (feed) {
     const updateFiles = [at('desktop', 'release', 'latest.yml'), join(at('desktop', 'release', 'win-unpacked', 'resources'), 'app-update.yml')];
     if (updateFiles.some((file) => !existsSync(file))) throw new Error('UPDATE_FEED_REPO is set but latest.yml or app-update.yml was not produced. Check the Electron Builder publish configuration.');
   }
-  console.log(`\nInstaller: ${at('desktop/release/Supermarket-POS-Setup.exe')}`);
-  console.log(feed ? `Update feed: github.com/${feed} (release Supermarket-POS-Setup.exe and latest.yml together there)` : 'No update feed set: this build cannot look for updates. Set UPDATE_FEED_REPO=owner/repository to build one that can.');
+  console.log(`\nInstaller: ${at('desktop/release', test ? 'Supermarket-POS-TEST-Setup.exe' : 'Supermarket-POS-Setup.exe')}`);
+  console.log(test ? 'TEST build: separate data folder, installs next to the real app, never updates.' : feed ? `Update feed: github.com/${feed} (release Supermarket-POS-Setup.exe and latest.yml together there)` : 'No update feed set: this build cannot look for updates. Set UPDATE_FEED_REPO=owner/repository to build one that can.');
 };
 
 if (!flags.has('--no-build')) build();

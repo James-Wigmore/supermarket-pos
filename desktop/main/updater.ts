@@ -2,10 +2,12 @@ import { app } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { isTest } from './channel';
 import type { UpdaterPort } from './updates';
 
 /** Why updates cannot run in this copy of the app, or null when they can. */
 export const updatesDisabledReason = () => {
+  if (isTest) return 'This is a test build: it never looks for updates.';
   if (!app.isPackaged) return 'Updates only work in the installed app, not when it is run from source.';
   if (!existsSync(join(process.resourcesPath, 'app-update.yml'))) return 'This copy of the app was built without an update source, so it cannot look for updates.';
   return null;

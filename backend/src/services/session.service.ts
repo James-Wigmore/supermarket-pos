@@ -84,6 +84,24 @@ export const closeSession = (actor: Actor, id: string, actualCash: number, notes
     return closed;
   });
 
+/** A manager corrects the counted cash of a CLOSED shift (a mistyped count). The original figures are kept in the audit log. */
+export const recountSession = (actor: Actor, id: string, actualCash: number, reason: string) =>
+  transact(async (tx) => {
+    const session = await tx.cashierSession.findUnique({ where: { id } });
+    if (!session) throw notFound('Session');
+    branchFor(actor, session.branchId);
+    if (session.status !== 'CLOSED') throw conflict('Only a closed shift can be recounted');
+    if (session.cashierId === actor.id && actor.role !== 'SUPER_ADMIN') throw forbidden('Someone other than the cashier must correct this count');
+    const { expectedCash } = await sessionSummary(id);
+    const difference = money(actualCash).minus(expectedCash);
+    const updated = await tx.cashierSession.update({ where: { id }, data: { expectedCash, actualCash: money(actualCash), difference } });
+    await audit(tx, actor, {
+      action: 'SESSION_RECOUNT', entity: 'CashierSession', entityId: id, branchId: session.branchId,
+      before: { actualCash: session.actualCash, difference: session.difference }, after: { expectedCash, actualCash, difference, reason },
+    });
+    return updated;
+  });
+
 export const listSessions = async (actor: Actor, q: SessionListQuery) => {
   const where: Prisma.CashierSessionWhereInput = {
     branchId: branchFor(actor, q.branchId),

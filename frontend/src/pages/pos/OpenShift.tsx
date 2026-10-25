@@ -5,7 +5,7 @@ import { Button, ErrorNote, Input, Loading, Panel, Select } from '../../componen
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import type { Page, Register } from '../../lib/types';
-import { currencyCode } from '../../lib/format';
+import { currencyCode, typed } from '../../lib/format';
 
 export const OpenShift = () => {
   const client = useQueryClient();
@@ -14,7 +14,7 @@ export const OpenShift = () => {
   const [registerId, setRegisterId] = useState('');
   const [cash, setCash] = useState('');
   const open = useMutation({
-    mutationFn: () => api('/sessions', { method: 'POST', body: { registerId: registerId || registers.data?.data[0]?.id, openingCash: Number(cash || 0) } }),
+    mutationFn: () => api('/sessions', { method: 'POST', body: { registerId: registerId || registers.data?.data[0]?.id, openingCash: cash.trim() === '' ? 0 : typed(cash) } }),
     onSuccess: () => client.invalidateQueries({ queryKey: ['session'] }),
   });
 
@@ -26,9 +26,9 @@ export const OpenShift = () => {
           <Select label="Register" value={registerId} onChange={(e) => setRegisterId(e.target.value)}>
             {registers.data?.data.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
           </Select>
-          <Input label={`Opening cash in drawer (${currencyCode()})`} inputMode="decimal" value={cash} onChange={(e) => setCash(e.target.value)} placeholder="0" autoFocus />
+          <Input label={`Opening cash in drawer (${currencyCode()})`} inputMode="decimal" value={cash} onChange={(e) => setCash(e.target.value)} placeholder="0" autoFocus error={cash.trim() !== '' && Number.isNaN(typed(cash)) ? 'Enter numbers only, e.g. 50000' : undefined} />
           <ErrorNote error={open.error} />
-          <Button type="submit" size="lg" className="w-full" loading={open.isPending} disabled={!registers.data?.data.length}>Open shift</Button>
+          <Button type="submit" size="lg" className="w-full" loading={open.isPending} disabled={!registers.data?.data.length || (cash.trim() !== '' && Number.isNaN(typed(cash)))}>Open shift</Button>
           {can('dashboard:read') && <Link to="/" className="block rounded-field border border-line px-3 py-2.5 text-center text-sm font-semibold hover:bg-paper">Back to home</Link>}
           {!registers.data?.data.length && <p className="text-sm text-muted">No registers exist for this branch. Ask a manager to add one under Settings.</p>}
         </form>

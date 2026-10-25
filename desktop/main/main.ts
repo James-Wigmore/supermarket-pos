@@ -5,6 +5,7 @@ import { trustOrigin } from '../ipc/handle';
 import { registerGoogleIpc } from '../ipc/google';
 import { registerSystemIpc } from '../ipc/system';
 import { registerUpdateIpc } from '../ipc/updates';
+import { channel } from './channel';
 import { backupBeforeSync, createBackup, startAutoBackup } from './backup';
 import { startBackend, type Backend } from './backend';
 import { accessToken, googleStatus } from './google';
@@ -15,8 +16,8 @@ import { createUpdateService } from './updates';
 import { createWindow } from './window';
 
 // Fixed folder name (no spaces) so user data survives updates and renames of the app.
-app.setPath('userData', join(app.getPath('appData'), 'supermarket-pos'));
-app.setAppUserModelId('com.supermarketpos.desktop'); // same as the installer's appId: correct taskbar grouping and shortcuts
+app.setPath('userData', join(app.getPath('appData'), channel.folder));
+app.setAppUserModelId(channel.appId); // same as the installer's appId: correct taskbar grouping and shortcuts
 registerAppScheme();
 
 let backend: Backend | null = null;

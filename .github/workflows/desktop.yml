@@ -29,16 +29,18 @@ jobs:
       # Add CSC_LINK / CSC_KEY_PASSWORD as repository secrets to sign the installer (optional).
       # Installed apps look for updates in this repository's GitHub Releases (it must stay public), so the
       # installer is built with this repository as its update source and latest.yml is released next to it.
-      - run: npm run desktop:package
+      # A manual run builds the TEST installer (own data folder, never updates) so it can be tried safely.
+      # Only a pushed v* tag builds the real installer that users receive through updates.
+      - run: npm run ${{ startsWith(github.ref, 'refs/tags/v') && 'desktop:package' || 'desktop:test' }}
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           UPDATE_FEED_REPO: ${{ github.repository }}
       - uses: actions/upload-artifact@v4
         with:
-          name: Supermarket-POS-Setup
+          name: ${{ startsWith(github.ref, 'refs/tags/v') && 'Supermarket-POS-Setup' || 'Supermarket-POS-TEST-Setup' }}
           path: |
-            desktop/release/Supermarket-POS-Setup.exe
+            desktop/release/*Setup.exe
             desktop/release/latest.yml
           if-no-files-found: error
       - name: Publish GitHub release

@@ -168,4 +168,29 @@ describe('abuse resistance', () => {
     for (let i = 0; i < 22; i++) statuses.push((await request(app).post('/api/sales/held').set(auth(w.users.CASHIER.token)).send({ payload: { items: [{ productId: randomUUID() }] } })).status);
     expect(statuses.filter((s) => s === 201)).toHaveLength(20);
   });
+
+  it('records the opening cash and refuses an unreadable cash count instead of treating it as 0', async () => {
+    const w = await createWorld();
+    const bad = await request(app).post('/api/sessions').set(auth(w.users.CASHIER.token)).send({ registerId: w.register.id, openingCash: null });
+    expect(bad.status).toBe(400);
+    const session = await openShift(w, 'CASHIER', 50000);
+    const summary = await request(app).get(`/api/sessions/${session}/summary`).set(auth(w.users.CASHIER.token));
+    expect(Number(summary.body.expectedCash)).toBe(50000);
+    const close = await request(app).post(`/api/sessions/${session}/close`).set(auth(w.users.CASHIER.token)).send({ actualCash: null });
+    expect(close.status).toBe(400);
+  });
+
+  it('lets a manager correct a wrongly counted closed shift, once, with a reason, and not the cashier', async () => {
+    const w = await createWorld();
+    const session = await openShift(w, 'CASHIER', 50000);
+    await request(app).post(`/api/sessions/${session}/close`).set(auth(w.users.CASHIER.token)).send({ actualCash: 0 });
+    const url = `/api/sessions/${session}/recount`;
+    const body = { actualCash: 50000, reason: 'Typed with a comma' };
+    expect((await request(app).post(url).set(auth(w.users.CASHIER.token)).send(body)).status).toBe(403);
+    expect((await request(app).post(url).set(auth(w.users.MANAGER.token)).send({ ...body, reason: 'x' })).status).toBe(400);
+    const fixed = await request(app).post(url).set(auth(w.users.MANAGER.token)).send(body);
+    expect(fixed.status).toBe(200);
+    expect(Number(fixed.body.difference)).toBe(0);
+    expect(await prisma.auditLog.count({ where: { action: 'SESSION_RECOUNT', entityId: session } })).toBe(1);
+  });
 });

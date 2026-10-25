@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DesktopSettings } from '../bridge';
+import { channel } from './channel';
 
 interface Config extends DesktopSettings {
   /** Signs login tokens. Generated once per installation, never sent to the UI. */
@@ -16,7 +17,7 @@ const defaults = (): Config => ({
   printer: '',
   silentPrint: false,
   autoBackup: true,
-  backupDir: join(app.getPath('documents'), 'Supermarket POS Backups'),
+  backupDir: join(app.getPath('documents'), `${channel.name} Backups`),
   lastBackupAt: null,
 });
 

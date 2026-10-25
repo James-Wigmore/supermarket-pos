@@ -17,6 +17,15 @@ Installed apps look for new versions in **this repository's GitHub Releases**, s
 cannot be read by an installed app without a secret saved on every shop PC, so if the repository is ever made private, installed apps
 simply stop finding updates.) No tokens or extra settings are needed: the release workflow already has permission to publish releases.
 
+## Trying changes before users get them (test channel)
+
+A test build has its own identity, so it never touches the shop's real data and never updates. It installs next to the real app as "Supermarket POS TEST" (data in `%APPDATA%\supermarket-pos-test`, backups in `Documents\Supermarket POS TEST Backups`).
+
+- `npm run desktop:dev` runs from source as a test build (add `--live` to the script only if you really want the real data).
+- `npm run desktop:test` builds `desktop/release/Supermarket-POS-TEST-Setup.exe`. A manual run of the "Windows installer" workflow builds the same test installer as a downloadable artifact; only a pushed `v*` tag builds the real one.
+- To test against real shop data, close both apps and copy `%APPDATA%\supermarket-pos\data\pos.db` into `%APPDATA%\supermarket-pos-test\data\` (a copy, never the other way round).
+- Routine: change, `npm run check`, `npm run desktop:test`, try it, then `npm run release -- patch`.
+
 **Releasing:** from a clean `main`, run `npm run release -- patch` (or `minor`, `major`, or an exact version such as `1.2.0`; add `--dry` to only print the steps). It runs the checks, raises `version` in `desktop/package.json`, commits, pushes the matching tag (`v1.2.0`) and `main`. By hand, that is: raise the version, commit, push the tag. The workflow runs the checks, builds the
 installer with this repository as its update source and publishes `Supermarket-POS-Setup.exe` and `latest.yml` to the release. Installed
 apps then offer the update to administrators within about 6 hours (or at once via *Check for updates*). Manually started workflow runs only
