@@ -68,4 +68,13 @@ describe('supplier payment status', () => {
     await request(app).patch(`/api/purchases/${second.body.id}/payment`).set(auth(manager)).send({ paid: true });
     expect(await balance(w.supplier.id)).toBe(0);
   });
+
+  it('refuses a payment larger than the balance owed', async () => {
+    const w = await createWorld();
+    const manager = w.users.MANAGER.token;
+    await deliver(w, manager); // owes 5000
+    const over = await request(app).post(`/api/suppliers/${w.supplier.id}/payments`).set(auth(manager)).send({ amount: 5001 });
+    expect(over.status).toBe(400);
+    expect(await balance(w.supplier.id)).toBe(5000);
+  });
 });

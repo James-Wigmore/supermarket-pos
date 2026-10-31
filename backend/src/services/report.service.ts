@@ -83,7 +83,7 @@ const salesBySale = async (c: Ctx, label: string, join: Prisma.Sql, key: Prisma.
 
 const salesByItem = async (c: Ctx, label: string, key: Prisma.Sql, join: Prisma.Sql): Promise<ReportData> => ({
   title: `Sales by ${label.toLowerCase()}`,
-  columns: [text('label', label), num('quantity', 'Quantity'), money('revenue', 'Revenue'), money('cost', 'Cost'), money('profit', 'Gross profit')],
+  columns: [text('label', label), num('quantity', 'Quantity'), money('revenue', 'Sales excl. tax (after returns)'), money('cost', 'Cost'), money('profit', 'Gross profit')],
   rows: await rows(Prisma.sql`
     SELECT ${key} AS label, SUM(si.quantity - si."returnedQty") AS quantity,
            SUM(${NET_REVENUE_SQL}) AS revenue, SUM(${COST_SQL}) AS cost, SUM(${PROFIT_SQL}) AS profit
@@ -198,18 +198,18 @@ const financial = async (c: Ctx): Promise<ReportData> => {
   const expenses = n(expense?.amount);
   return {
     title: 'Financial summary',
-    columns: [text('label', 'Item'), money('amount', 'Amount')],
+    columns: [text('label', 'Item'), money('figure', 'Amount')],
     rows: [
-      { label: 'Gross sales (before discounts)', amount: n(sale?.gross) },
-      { label: 'Discounts', amount: -n(sale?.discounts) },
-      { label: 'Revenue', amount: revenue },
-      { label: 'Refunds', amount: -refunds },
-      { label: 'Net revenue', amount: revenue - refunds },
-      { label: 'Tax included in net revenue', amount: n(items?.tax) },
-      { label: 'Cost of goods sold', amount: n(items?.cogs) },
-      { label: 'Gross profit', amount: profit },
-      { label: 'Expenses', amount: -expenses },
-      { label: 'Net profit', amount: profit - expenses },
+      { label: 'Gross sales (before discounts)', figure: n(sale?.gross) },
+      { label: 'Discounts', figure: -n(sale?.discounts) },
+      { label: 'Revenue', figure: revenue },
+      { label: 'Refunds', figure: -refunds },
+      { label: 'Net revenue', figure: revenue - refunds },
+      { label: 'Tax included in net revenue', figure: n(items?.tax) },
+      { label: 'Cost of goods sold', figure: n(items?.cogs) },
+      { label: 'Gross profit', figure: profit },
+      { label: 'Expenses', figure: -expenses },
+      { label: 'Net profit', figure: profit - expenses },
     ],
   };
 };

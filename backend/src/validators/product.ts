@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { amount, dateInput, id } from './common';
 
+// A selling price must be a real positive number: an unreadable entry (null) must never become a price of 0.
+const price = z.union([z.number(), z.string().trim().min(1).transform(Number)]).pipe(z.number().positive().max(1e12));
+
 const code = z.string().trim().min(3).max(64).regex(/^[\x21-\x7E]+$/, 'Barcode must be printable ASCII without spaces');
 
 const productFields = {
@@ -22,7 +25,7 @@ const productFields = {
 
 export const createProductSchema = z.object({
   ...productFields,
-  sellingPrice: amount,
+  sellingPrice: price,
   barcodes: z.array(code).max(10).default([]),
   generateBarcode: z.boolean().default(false),
 });
@@ -32,7 +35,7 @@ export const updateProductSchema = z.object(productFields).partial().extend({ is
 export const addBarcodeSchema = z.object({ code });
 
 export const setPriceSchema = z.object({
-  newPrice: amount,
+  newPrice: price,
   effectiveFrom: dateInput.optional(),
   reason: z.string().trim().max(200).optional(),
 });

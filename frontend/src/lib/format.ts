@@ -10,6 +10,8 @@ export const setCurrency = (code: string) => {
 };
 
 export const num = (value: unknown) => Number(value ?? 0);
+/** Like Number(), but reads separators the way people type amounts ("50,000"). Blank is 0, unreadable is NaN. */
+export const amt = (value: unknown) => (typeof value === 'string' ? Number(value.replace(/[,\s]/g, '')) : Number(value ?? 0));
 /** What a person typed ("50,000", " 1 200.50 ") as a number, or NaN when it is not one. Blank is NaN too: never silently 0. */
 export const typed = (text: string) => (/^\s*\d[\d,\s]*(\.\d+)?\s*$/.test(text) ? Number(text.replace(/[,\s]/g, '')) : NaN);
 export const fmtNum = (value: unknown) => nf.format(num(value));

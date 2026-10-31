@@ -116,7 +116,7 @@ describe('reports and dashboard use real data', () => {
     expect(dash.body.trend).toHaveLength(14);
 
     const fin = await request(app).get('/api/reports/financial').set(mgr);
-    const row = (label: string) => fin.body.rows.find((r: { label: string }) => r.label === label).amount;
+    const row = (label: string) => fin.body.rows.find((r: { label: string }) => r.label === label).figure;
     expect(row('Revenue')).toBe(12000);
     expect(row('Cost of goods sold')).toBe(7200);
     expect(row('Gross profit')).toBe(4800);

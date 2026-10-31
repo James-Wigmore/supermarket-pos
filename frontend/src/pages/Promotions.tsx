@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Badge, Button, Confirm, DataTable, ErrorNote, Input, Modal, PageHeader, Panel, Select, useToast } from '../components/ui';
 import { api } from '../lib/api';
-import { date, fmtNum, label, money, num, currencyCode } from '../lib/format';
+import { amt, date, fmtNum, label, money, num, currencyCode } from '../lib/format';
 import { useDebounced } from '../lib/hooks';
 import { usePage } from '../lib/queries';
 import type { Product, Promotion } from '../lib/types';
@@ -29,7 +29,7 @@ const PromotionForm = ({ promotion, onClose }: { promotion: Promotion | null; on
   const q = useDebounced(search);
   const found = useQuery({ queryKey: ['promo-product', q], queryFn: () => api<{ data: Product[] }>('/products', { query: { search: q, pageSize: 6 } }), enabled: q.length >= 2 && !product });
   const save = useMutation({
-    mutationFn: () => api(promotion ? `/promotions/${promotion.id}` : '/promotions', { method: promotion ? 'PATCH' : 'POST', body: { name: f.name, type: f.type, value: Number(f.value || 0), minQty: Number(f.minQty), buyQty: Number(f.buyQty), getQty: Number(f.getQty), productId: product?.id ?? null, startsAt: new Date(f.startsAt).toISOString(), endsAt: f.endsAt ? new Date(f.endsAt).toISOString() : null } }),
+    mutationFn: () => api(promotion ? `/promotions/${promotion.id}` : '/promotions', { method: promotion ? 'PATCH' : 'POST', body: { name: f.name, type: f.type, value: amt(f.value || 0), minQty: amt(f.minQty), buyQty: amt(f.buyQty), getQty: amt(f.getQty), productId: product?.id ?? null, startsAt: new Date(f.startsAt).toISOString(), endsAt: f.endsAt ? new Date(f.endsAt).toISOString() : null } }),
     onSuccess: () => { toast('success', promotion ? 'Promotion updated' : 'Promotion created'); void client.invalidateQueries({ queryKey: ['promotions'] }); onClose(); },
   });
   return (

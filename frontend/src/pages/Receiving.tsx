@@ -4,7 +4,7 @@ import { BranchField } from '../components/BranchField';
 import { ReferenceSelect } from '../components/ReferenceSelect';
 import { Badge, Button, DataTable, ErrorNote, Input, Modal, PageHeader, Panel, useToast } from '../components/ui';
 import { api } from '../lib/api';
-import { fmtNum, money, num, uuid, currencyCode } from '../lib/format';
+import { amt, fmtNum, money, num, uuid, currencyCode } from '../lib/format';
 import { errorMessage } from '../lib/hooks';
 import { useBranchChoice, useRefList } from '../lib/queries';
 import { useAuth } from '../lib/auth';
@@ -17,11 +17,11 @@ interface Pending { product: LookupProduct; quantity: string; unitCost: string; 
 const NewProductModal = ({ barcode, suggestion, supplierId, onClose, onCreated }: { barcode: string; suggestion?: Suggestion; supplierId: string; onClose: () => void; onCreated: (p: Product) => void }) => {
   const [f, setF] = useState({ name: suggestion?.name ?? '', brand: suggestion?.brand ?? '', packageSize: suggestion?.packageSize ?? '', sellingPrice: '', purchasePrice: '', tracksExpiry: false });
   const create = useMutation({
-    mutationFn: () => api<Product>('/products', { method: 'POST', body: { name: f.name, brand: f.brand || undefined, manufacturer: suggestion?.manufacturer, packageSize: f.packageSize || undefined, imageUrl: suggestion?.imageUrl, sellingPrice: Number(f.sellingPrice), purchasePrice: Number(f.purchasePrice || 0), tracksExpiry: f.tracksExpiry, supplierId: supplierId || undefined, barcodes: [barcode] } }),
+    mutationFn: () => api<Product>('/products', { method: 'POST', body: { name: f.name, brand: f.brand || undefined, manufacturer: suggestion?.manufacturer, packageSize: f.packageSize || undefined, imageUrl: suggestion?.imageUrl, sellingPrice: amt(f.sellingPrice), purchasePrice: amt(f.purchasePrice || 0), tracksExpiry: f.tracksExpiry, supplierId: supplierId || undefined, barcodes: [barcode] } }),
     onSuccess: onCreated,
   });
   return (
-    <Modal open onClose={onClose} title="New product" footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={() => create.mutate()} loading={create.isPending} disabled={!f.name || !f.sellingPrice}>Confirm and save</Button></>}>
+    <Modal open onClose={onClose} title="New product" footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={() => create.mutate()} loading={create.isPending} disabled={!f.name || !(amt(f.sellingPrice) > 0)}>Confirm and save</Button></>}>
       <p className="mb-3 rounded-field bg-brand-soft px-3 py-2 text-sm text-brand-dark">
         {suggestion ? 'Details came from an online product database. Check them and set your own prices.' : 'This barcode is not in the catalogue and no online details were found. Enter them manually.'}
       </p>
@@ -77,11 +77,11 @@ export const Receiving = () => {
   const addLine = () => {
     if (!pending) return;
     const { product: p } = pending;
-    const quantity = Number(pending.quantity);
+    const quantity = amt(pending.quantity);
     if (!(quantity > 0)) return;
     if (p.tracksExpiry && !pending.expiryDate) return toast('error', 'Enter the expiry date for this product.');
-    const line: Line = { key: `${p.id}|${pending.batchNo}|${pending.expiryDate}`, productId: p.id, name: p.name, unit: p.unit, quantity, unitCost: Number(pending.unitCost || 0), batchNo: pending.batchNo, expiryDate: pending.expiryDate, tracksExpiry: p.tracksExpiry };
-    setLines((l) => (l.some((x) => x.key === line.key) ? l.map((x) => (x.key === line.key ? { ...x, quantity: x.quantity + quantity, unitCost: line.unitCost } : x)) : [...l, line]));
+    const line: Line = { key: `${p.id}|${pending.batchNo}|${pending.expiryDate}`, productId: p.id, name: p.name, unit: p.unit, quantity, unitCost: amt(pending.unitCost || 0), batchNo: pending.batchNo, expiryDate: pending.expiryDate, tracksExpiry: p.tracksExpiry };
+    setLines((l) => (l.some((x) => x.key === line.key) ? l.map((x) => (x.key === line.key ? { ...x, quantity: x.quantity + quantity, unitCost: (x.quantity * x.unitCost + quantity * line.unitCost) / (x.quantity + quantity) } : x)) : [...l, line]));
     setPending(null);
     focusScan();
   };
@@ -127,7 +127,7 @@ export const Receiving = () => {
                   <Input label="Unit cost" inputMode="decimal" value={pending.unitCost} onChange={(e) => setPending({ ...pending, unitCost: e.target.value })} />
                   {p.tracksExpiry && <><Input label="Batch no." value={pending.batchNo} onChange={(e) => setPending({ ...pending, batchNo: e.target.value })} /><Input label="Expiry date" type="date" value={pending.expiryDate} onChange={(e) => setPending({ ...pending, expiryDate: e.target.value })} /></>}
                 </div>
-                <div className="flex gap-2"><Button type="submit" disabled={!(Number(pending.quantity) > 0)}>Add to delivery</Button><Button variant="ghost" onClick={() => { setPending(null); focusScan(); }}>Skip</Button></div>
+                <div className="flex gap-2"><Button type="submit" disabled={!(amt(pending.quantity) > 0)}>Add to delivery</Button><Button variant="ghost" onClick={() => { setPending(null); focusScan(); }}>Skip</Button></div>
               </form>
             )}
           </div>

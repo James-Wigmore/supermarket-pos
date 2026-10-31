@@ -184,6 +184,7 @@ export const paySupplier = (actor: Actor, supplierId: string, amount: number, no
   transact(async (tx) => {
     const supplier = await tx.supplier.findUnique({ where: { id: supplierId } });
     if (!supplier) throw notFound('Supplier');
+    if (d(amount).gt(supplier.balance)) throw badRequest(`This is more than the ${money(supplier.balance)} owed to ${supplier.name}`);
     const payment = await tx.supplierPayment.create({ data: { supplierId, userId: actor.id, amount: money(amount), note } });
     await tx.supplier.update({ where: { id: supplierId }, data: { balance: { decrement: payment.amount } } });
     // Settle the oldest unpaid purchases first, so purchase statuses and the balance always agree.

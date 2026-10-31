@@ -118,6 +118,7 @@ export const Shifts = () => {
       <Panel title="History" className="!p-0" >
         <DataTable rowKey={(s) => s.id} rows={list.data?.data} loading={list.isLoading} onRowClick={(s) => setViewing(s.id)} empty={<p className="p-10 text-center text-muted">No shifts yet.</p>} columns={[
           { header: 'Cashier', cell: (s) => s.cashierName ?? '—' }, { header: 'Register', cell: (s) => s.register?.name ?? '—' }, { header: 'Opened', cell: (s) => dateTime(s.openedAt) },
+          { header: 'Opening', cell: (s) => money(s.openingCash), align: 'right' },
           { header: 'Status', cell: (s) => (s.status === 'OPEN' ? <Badge tone="warn">Open</Badge> : <Badge>Closed</Badge>) },
           { header: 'Expected', cell: (s) => (s.expectedCash == null ? '—' : money(s.expectedCash)), align: 'right' }, { header: 'Counted', cell: (s) => (s.actualCash == null ? '—' : money(s.actualCash)), align: 'right' },
           { header: 'Variance', cell: (s) => (s.difference == null ? '—' : <span className={num(s.difference) === 0 ? '' : 'font-semibold text-danger'}>{money(s.difference)}</span>), align: 'right' }]} />

@@ -7,7 +7,7 @@ import { Badge, Button, DataTable, ErrorNote, Modal, PageHeader, Pagination, Pan
 import { api, downloadFile } from '../lib/api';
 import { printPage } from '../lib/desktop';
 import { useAuth } from '../lib/auth';
-import { dateTime, fmtNum, label, money, num } from '../lib/format';
+import { amt, dateTime, fmtNum, label, money, num } from '../lib/format';
 import { queue, type PendingSale } from '../lib/offline';
 import { usePage } from '../lib/queries';
 import { useSync } from '../lib/sync';
@@ -22,8 +22,8 @@ const ReturnForm = ({ sale, onDone }: { sale: Sale; onDone: () => void }) => {
   const [reason, setReason] = useState('');
   const [method, setMethod] = useState<PaymentMethod>('CASH');
   const items = sale.items.filter((i) => num(i.quantity) - num(i.returnedQty) > 0);
-  const chosen = items.map((i) => ({ saleItemId: i.id, quantity: Number(qty[i.id] ?? 0) })).filter((i) => i.quantity > 0);
-  const refund = items.reduce((s, i) => s + (num(qty[i.id]) * num(i.lineTotal)) / num(i.quantity), 0);
+  const chosen = items.map((i) => ({ saleItemId: i.id, quantity: amt(qty[i.id] ?? 0) })).filter((i) => i.quantity > 0);
+  const refund = items.reduce((s, i) => s + (amt(qty[i.id]) * num(i.lineTotal)) / num(i.quantity), 0);
   const save = useMutation({
     mutationFn: () => run('Refunds need a manager’s approval.', (approval) => api('/returns', { method: 'POST', body: { saleId: sale.id, reason, method, items: chosen, approval } })),
     onSuccess: () => { toast('success', 'Return recorded'); onDone(); },

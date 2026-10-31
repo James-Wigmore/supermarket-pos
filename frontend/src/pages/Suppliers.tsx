@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Badge, Button, Confirm, DataTable, ErrorNote, Input, Modal, PageHeader, Pagination, Panel, useToast } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { date, money, num, currencyCode } from '../lib/format';
+import { amt, date, money, num, currencyCode } from '../lib/format';
 import { errorMessage } from '../lib/hooks';
 import { usePage } from '../lib/queries';
 import type { Supplier } from '../lib/types';
@@ -39,7 +39,7 @@ const SupplierDetail = ({ supplier, onClose }: { supplier: Supplier; onClose: ()
   const [amount, setAmount] = useState('');
   const history = useQuery({ queryKey: ['supplier-history', supplier.id], queryFn: () => api<History>(`/suppliers/${supplier.id}/history`) });
   const pay = useMutation({
-    mutationFn: () => api(`/suppliers/${supplier.id}/payments`, { method: 'POST', body: { amount: Number(amount) } }),
+    mutationFn: () => api(`/suppliers/${supplier.id}/payments`, { method: 'POST', body: { amount: amt(amount) } }),
     onSuccess: () => { toast('success', 'Payment recorded'); setAmount(''); void history.refetch(); void client.invalidateQueries({ queryKey: ['suppliers'] }); },
   });
   const setPaid = useMutation({
@@ -51,7 +51,7 @@ const SupplierDetail = ({ supplier, onClose }: { supplier: Supplier; onClose: ()
     <Modal open onClose={onClose} title={supplier.name} width="lg">
       <p className="mb-1 text-sm text-muted">{[supplier.contact, supplier.phone, supplier.email].filter(Boolean).join(' · ') || 'No contact details'}</p>
       <p className="mb-4 text-lg">Balance owed: <b className={num(balance) > 0 ? 'text-danger' : ''}>{money(balance)}</b></p>
-      {can('supplier:write') && <div className="mb-5 flex items-end gap-2"><Input label={`Record a payment (${currencyCode()})`} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-56" /><Button onClick={() => pay.mutate()} disabled={!(Number(amount) > 0)} loading={pay.isPending}>Record payment</Button></div>}
+      {can('supplier:write') && <div className="mb-5 flex items-end gap-2"><Input label={`Record a payment (${currencyCode()})`} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-56" /><Button onClick={() => pay.mutate()} disabled={!(amt(amount) > 0)} loading={pay.isPending}>Record payment</Button></div>}
       <ErrorNote error={pay.error ?? setPaid.error} />
       <h3 className="mb-1 mt-3 font-semibold">Purchases</h3>
       <DataTable rowKey={(p) => p.id} rows={history.data?.purchases} loading={history.isLoading} empty={<p className="py-4 text-sm text-muted">No purchases yet.</p>} columns={[{ header: 'Order', cell: (p) => p.number }, { header: 'Date', cell: (p) => date(p.createdAt) }, { header: 'Status', cell: (p) => <Badge>{p.status}</Badge> },

@@ -5,7 +5,7 @@ import { Categories } from './Categories';
 import { ReferenceSelect } from '../components/ReferenceSelect';
 import { ApiError, api, downloadFile } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { date, fmtNum, money, num, currencyCode } from '../lib/format';
+import { amt, date, fmtNum, money, num, currencyCode } from '../lib/format';
 import { errorMessage, useDebounced } from '../lib/hooks';
 import { usePage, useRefList } from '../lib/queries';
 import type { LookupResult, Named, Product } from '../lib/types';
@@ -102,13 +102,13 @@ const ProductForm = ({ product, onClose }: { product: Product | null; onClose: (
         unit: f.unit,
         packageSize: f.packageSize,
         imageUrl: f.imageUrl,
-        purchasePrice: Number(f.purchasePrice || 0),
-        taxRate: Number(f.taxRate || 0),
-        minStock: Number(f.minStock || 0),
+        purchasePrice: amt(f.purchasePrice || 0),
+        taxRate: amt(f.taxRate || 0),
+        minStock: amt(f.minStock || 0),
         tracksExpiry: f.tracksExpiry,
         categoryId: f.categoryId || null,
         supplierId: f.supplierId || null,
-        maxStock: f.maxStock === '' ? null : Number(f.maxStock),
+        maxStock: f.maxStock === '' ? null : amt(f.maxStock),
       };
 
       if (product) {
@@ -124,7 +124,7 @@ const ProductForm = ({ product, onClose }: { product: Product | null; onClose: (
           ...clean(shared),
           categoryId: shared.categoryId,
           supplierId: shared.supplierId,
-          sellingPrice: Number(f.sellingPrice),
+          sellingPrice: amt(f.sellingPrice),
           barcodes: f.barcode ? [f.barcode.trim()] : [],
           generateBarcode: f.generateBarcode,
         },
@@ -152,7 +152,7 @@ const ProductForm = ({ product, onClose }: { product: Product | null; onClose: (
           <Button
             onClick={() => save.mutate()}
             loading={save.isPending}
-            disabled={!f.name || (!product && !f.sellingPrice)}
+            disabled={!f.name || (!product && !(amt(f.sellingPrice) > 0))}
           >
             Save product
           </Button>
@@ -471,7 +471,7 @@ const PriceModal = ({
       api(`/products/${product.id}/prices`, {
         method: 'POST',
         body: {
-          newPrice: Number(price),
+          newPrice: amt(price),
           effectiveFrom: when
             ? new Date(when).toISOString()
             : undefined,
@@ -525,7 +525,7 @@ const PriceModal = ({
         <Button
           onClick={() => save.mutate()}
           loading={save.isPending}
-          disabled={!price}
+          disabled={!(amt(price) > 0)}
         >
           {when ? 'Schedule price' : 'Update price'}
         </Button>

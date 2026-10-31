@@ -85,7 +85,7 @@ export const stockOverview = async (actor: Actor, q: StockOverviewQuery) => {
   const [rows, count] = await Promise.all([
     rawRows(Prisma.sql`
       SELECT p.id, p.sku, p.name, p.unit, p."minStock", p."maxStock", p."purchasePrice", p."tracksExpiry",
-             c.name AS category, COALESCE(s.quantity, 0) AS quantity, COALESCE(s.quantity, 0) * p."purchasePrice" AS value
+             c.name AS category, COALESCE(s.quantity, 0) AS quantity, MAX(COALESCE(s.quantity, 0), 0) * p."purchasePrice" AS value
       ${from} ORDER BY p.name LIMIT ${take} OFFSET ${skip}`),
     rawRows<{ n: number }>(Prisma.sql`SELECT COUNT(*) AS n ${from}`),
   ]);

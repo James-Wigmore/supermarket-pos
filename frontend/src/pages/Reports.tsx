@@ -41,7 +41,8 @@ export const Reports = () => {
   // Print opens the PDF version in its own window, ready for the printer.
   const print = () => void downloadFile(`/reports/${name}`, { ...query, format: 'pdf' }, null).catch(fail);
   const snapshot = ['inventory-current', 'stock-valuation', 'low-stock', 'out-of-stock', 'expiring'].includes(name);
-  const total = report.data?.columns.filter((c) => c.type === 'money' && report.data!.rows.length > 1).slice(-1)[0];
+  // Only columns that are meant to be added up get a total (never prices or the financial summary's mixed lines).
+  const total = report.data?.columns.filter((c) => c.type === 'money' && ['revenue', 'profit', 'value', 'lossValue', 'total', 'amount'].includes(c.key) && report.data!.rows.length > 1).slice(-1)[0];
 
   return (
     <>

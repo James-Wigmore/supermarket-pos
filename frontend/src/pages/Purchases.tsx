@@ -5,7 +5,7 @@ import { ReferenceSelect } from '../components/ReferenceSelect';
 import { Badge, Button, DataTable, ErrorNote, Input, Modal, PageHeader, Pagination, Panel, useToast } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { date, dateTime, fmtNum, label, money, num } from '../lib/format';
+import { amt, date, dateTime, fmtNum, label, money, num } from '../lib/format';
 import { useDebounced } from '../lib/hooks';
 import { useBranchChoice, usePage, useRefList } from '../lib/queries';
 import type { Named, Product, Supplier } from '../lib/types';
@@ -28,10 +28,10 @@ const NewOrder = ({ onClose }: { onClose: () => void }) => {
   const q = useDebounced(search);
   const found = useQuery({ queryKey: ['po-search', q], queryFn: () => api<{ data: Product[] }>('/products', { query: { search: q, pageSize: 6, isActive: true } }), enabled: q.length >= 2 });
   const save = useMutation({
-    mutationFn: () => api('/purchases', { method: 'POST', body: { supplierId, branchId: branch.branchId || undefined, items: lines.map((l) => ({ productId: l.productId, quantity: Number(l.quantity), unitCost: Number(l.unitCost) })) } }),
+    mutationFn: () => api('/purchases', { method: 'POST', body: { supplierId, branchId: branch.branchId || undefined, items: lines.map((l) => ({ productId: l.productId, quantity: amt(l.quantity), unitCost: amt(l.unitCost) })) } }),
     onSuccess: () => { toast('success', 'Purchase order created'); void client.invalidateQueries({ queryKey: ['purchases'] }); onClose(); },
   });
-  const valid = supplierId && !branch.missing && lines.length > 0 && lines.every((l) => Number(l.quantity) > 0 && l.unitCost !== '');
+  const valid = supplierId && !branch.missing && lines.length > 0 && lines.every((l) => amt(l.quantity) > 0 && l.unitCost.trim() !== '' && amt(l.unitCost) >= 0);
   const edit = (i: number, patch: Partial<(typeof lines)[number]>) => setLines((l) => l.map((x, n) => (n === i ? { ...x, ...patch } : x)));
   return (
     <Modal open onClose={onClose} title="New purchase order" width="lg" footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={() => save.mutate()} disabled={!valid} loading={save.isPending}>Create order</Button></>}>
@@ -50,7 +50,7 @@ const NewOrder = ({ onClose }: { onClose: () => void }) => {
           { header: 'Product', cell: (l) => l.name },
           { header: 'Quantity', cell: (l) => <input aria-label={`Quantity ${l.name}`} className="w-24 rounded-field border border-line px-2 py-1" inputMode="decimal" value={l.quantity} onChange={(e) => edit(lines.indexOf(l), { quantity: e.target.value })} /> },
           { header: 'Unit cost', cell: (l) => <input aria-label={`Cost ${l.name}`} className="w-28 rounded-field border border-line px-2 py-1" inputMode="decimal" value={l.unitCost} onChange={(e) => edit(lines.indexOf(l), { unitCost: e.target.value })} /> },
-          { header: 'Total', cell: (l) => money(num(l.quantity) * num(l.unitCost)), align: 'right' },
+          { header: 'Total', cell: (l) => money(amt(l.quantity) * amt(l.unitCost)), align: 'right' },
           { header: '', cell: (l) => <button type="button" className="text-danger" onClick={() => setLines((x) => x.filter((y) => y !== l))}>✕</button> }]} />
         <ErrorNote error={save.error} />
       </div>
@@ -67,14 +67,14 @@ const OrderDetail = ({ id, onClose }: { id: string; onClose: () => void }) => {
   const [expiry, setExpiry] = useState<Record<string, string>>({});
   const done = () => { void client.invalidateQueries({ queryKey: ['purchases'] }); void client.invalidateQueries({ queryKey: ['purchase', id] }); };
   const receive = useMutation({
-    mutationFn: () => api('/purchases/' + id + '/receive', { method: 'POST', body: { items: detail.data!.items.map((i) => ({ itemId: i.id, quantity: Number(qty[i.id] ?? num(i.quantityOrdered) - num(i.quantityReceived)), expiryDate: expiry[i.id] ? new Date(expiry[i.id]!).toISOString() : undefined })).filter((i) => i.quantity > 0) } }),
+    mutationFn: () => api('/purchases/' + id + '/receive', { method: 'POST', body: { items: detail.data!.items.map((i) => ({ itemId: i.id, quantity: amt(qty[i.id] ?? num(i.quantityOrdered) - num(i.quantityReceived)), expiryDate: expiry[i.id] ? new Date(expiry[i.id]!).toISOString() : undefined })).filter((i) => i.quantity > 0) } }),
     onSuccess: () => { toast('success', 'Goods received and stock updated'); done(); },
   });
   const cancel = useMutation({ mutationFn: () => api(`/purchases/${id}/cancel`, { method: 'POST' }), onSuccess: () => { toast('success', 'Order cancelled'); done(); } });
   const d = detail.data;
   return (
     <Modal open onClose={onClose} title={d ? `Order ${d.number}` : 'Order'} width="lg"
-      footer={d?.status === 'ORDERED' ? <>{can('purchase:write') && <Button variant="danger" onClick={() => cancel.mutate()} loading={cancel.isPending}>Cancel order</Button>}{can('stock:receive') && <Button onClick={() => receive.mutate()} loading={receive.isPending}>Receive goods</Button>}</> : undefined}>
+      footer={d?.status === 'ORDERED' ? <>{can('purchase:write') && <Button variant="danger" onClick={() => window.confirm('Cancel this order? This cannot be undone.') && cancel.mutate()} loading={cancel.isPending}>Cancel order</Button>}{can('stock:receive') && <Button onClick={() => receive.mutate()} loading={receive.isPending}>Receive goods</Button>}</> : undefined}>
       {d && <>
         <p className="mb-3 text-sm text-muted">{d.supplier.name} · {dateTime(d.createdAt)} · <Badge tone={TONE[d.status]}>{label(d.status)}</Badge> · <b className="text-ink">{money(d.total)}</b></p>
         <DataTable rowKey={(i) => i.id} rows={d.items} columns={[

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button, ErrorNote, Modal } from '../../components/ui';
 import { settle, type PaymentRow } from '../../lib/cart';
-import { fmtNum, label, money } from '../../lib/format';
+import { amt, fmtNum, label, money } from '../../lib/format';
 import type { PaymentMethod } from '../../lib/types';
 
 const METHODS: { method: PaymentMethod; key: string }[] = [
@@ -21,7 +21,7 @@ interface Props {
 export const PayModal = ({ total, busy, error, onClose, onConfirm }: Props) => {
   const [rows, setRows] = useState<{ method: PaymentMethod; amount: string; reference: string }[]>([{ method: 'CASH', amount: '', reference: '' }]);
 
-  const payments: PaymentRow[] = rows.map((r) => ({ method: r.method, amount: Number(r.amount) || 0, reference: r.reference || undefined })).filter((p) => p.amount > 0);
+  const payments: PaymentRow[] = rows.map((r) => ({ method: r.method, amount: amt(r.amount) || 0, reference: r.reference || undefined })).filter((p) => p.amount > 0);
   const { tendered, change, remaining, valid } = settle(total, payments);
   const update = (index: number, patch: Partial<(typeof rows)[number]>) => setRows((list) => list.map((r, i) => (i === index ? { ...r, ...patch } : r)));
   const fillRemaining = (index: number) => update(index, { amount: String(Math.max(0, total - payments.reduce((s, p, i) => (i === index ? s : s + p.amount), 0))) });

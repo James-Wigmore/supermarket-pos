@@ -137,8 +137,8 @@ export const createSale = async (actor: Actor, input: CreateSaleInput) => {
   }
 };
 
-export const voidSale = (actor: Actor, id: string, reason: string, approval: CreateSaleInput['approval']) =>
-  transact(async (tx) => {
+export const voidSale = async (actor: Actor, id: string, reason: string, approval: CreateSaleInput['approval']) => {
+  const voided = await transact(async (tx) => {
     const sale = await tx.sale.findUnique({ where: { id }, include: { returns: { select: { id: true } } } });
     if (!sale) throw notFound('Sale');
     branchFor(actor, sale.branchId);
@@ -162,6 +162,10 @@ export const voidSale = (actor: Actor, id: string, reason: string, approval: Cre
     await audit(tx, actor, { action: 'VOID', entity: 'Sale', entityId: id, branchId: sale.branchId, before: { status: sale.status }, after: { status: 'VOIDED', reason, approvedBy: approver.id } });
     return voided;
   });
+  // A void after the shift was closed changes its takings: refresh the expected cash and variance.
+  await reconcileClosedShift(actor, voided.sessionId);
+  return voided;
+};
 
 export const getSale = async (actor: Actor, id: string) => {
   const sale = await loadSale(prisma, { id });

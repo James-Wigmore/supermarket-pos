@@ -4,7 +4,7 @@ import { BranchSelect } from '../components/BranchSelect';
 import { Button, Confirm, DataTable, ErrorNote, Input, Modal, PageHeader, Pagination, Panel, useToast } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { date, money, currencyCode } from '../lib/format';
+import { amt, date, money, currencyCode } from '../lib/format';
 import { usePage } from '../lib/queries';
 
 interface Expense { id: string; category: string; amount: string; description: string | null; incurredAt: string }
@@ -14,11 +14,11 @@ const ExpenseForm = ({ branchId, onClose }: { branchId: string; onClose: () => v
   const toast = useToast();
   const [f, setF] = useState({ category: '', amount: '', description: '', incurredAt: new Date().toISOString().slice(0, 10) });
   const save = useMutation({
-    mutationFn: () => api('/expenses', { method: 'POST', body: { category: f.category, amount: Number(f.amount), description: f.description || undefined, incurredAt: new Date(f.incurredAt).toISOString(), branchId: branchId || undefined } }),
+    mutationFn: () => api('/expenses', { method: 'POST', body: { category: f.category, amount: amt(f.amount), description: f.description || undefined, incurredAt: new Date(f.incurredAt).toISOString(), branchId: branchId || undefined } }),
     onSuccess: () => { toast('success', 'Expense recorded'); void client.invalidateQueries({ queryKey: ['expenses'] }); onClose(); },
   });
   return (
-    <Modal open onClose={onClose} title="New expense" footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={() => save.mutate()} loading={save.isPending} disabled={!f.category || !(Number(f.amount) > 0)}>Save expense</Button></>}>
+    <Modal open onClose={onClose} title="New expense" footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={() => save.mutate()} loading={save.isPending} disabled={!f.category || !(amt(f.amount) > 0)}>Save expense</Button></>}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Input label="Category" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} placeholder="Rent, electricity, salaries…" autoFocus />
         <Input label={`Amount (${currencyCode()})`} inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} />

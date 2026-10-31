@@ -4,7 +4,7 @@ import { BranchSelect } from '../components/BranchSelect';
 import { Badge, Button, DataTable, ErrorNote, Input, Modal, PageHeader, Pagination, Panel, Select, Tabs, Textarea, inputCls, useToast } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { date, dateTime, fmtNum, label, money, num } from '../lib/format';
+import { amt, date, dateTime, fmtNum, label, money, num } from '../lib/format';
 import { useDebounced } from '../lib/hooks';
 import { useBranches, usePage } from '../lib/queries';
 
@@ -28,13 +28,13 @@ const AdjustModal = ({ row, branchId, onClose }: { row: StockRow; branchId: stri
   const adding = type === 'OPENING' || type === 'ADJUSTMENT_IN';
   const save = useMutation({
     mutationFn: () => api('/inventory/adjust', { method: 'POST', body: {
-      productId: row.id, branchId: branchId || undefined, quantity: Number(quantity), notes,
+      productId: row.id, branchId: branchId || undefined, quantity: amt(quantity), notes,
       type: type.startsWith('ADJUSTMENT') ? 'ADJUSTMENT' : type, direction: type === 'ADJUSTMENT_IN' ? 'IN' : type === 'ADJUSTMENT_OUT' ? 'OUT' : undefined,
       expiryDate: adding && expiry ? new Date(expiry).toISOString() : undefined } }),
     onSuccess: () => { toast('success', 'Stock adjusted'); void client.invalidateQueries({ queryKey: ['stock'] }); void client.invalidateQueries({ queryKey: ['movements'] }); onClose(); },
   });
   return (
-    <Modal open onClose={onClose} title={`Adjust stock: ${row.name}`} footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={() => save.mutate()} loading={save.isPending} disabled={!(Number(quantity) > 0) || notes.length < 3}>Save adjustment</Button></>}>
+    <Modal open onClose={onClose} title={`Adjust stock: ${row.name}`} footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={() => save.mutate()} loading={save.isPending} disabled={!(amt(quantity) > 0) || notes.length < 3}>Save adjustment</Button></>}>
       <p className="mb-3 text-sm text-muted">Currently {fmtNum(row.quantity)} {row.unit} in stock.</p>
       <div className="grid gap-3 sm:grid-cols-2">
         <Select label="Reason" value={type} onChange={(e) => setType(e.target.value as typeof type)} className="sm:col-span-2">{ADJUST_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select>
@@ -55,11 +55,11 @@ const TransferModal = ({ row, branchId, onClose }: { row: StockRow; branchId: st
   const [to, setTo] = useState('');
   const [quantity, setQuantity] = useState('');
   const save = useMutation({
-    mutationFn: () => api('/inventory/transfer', { method: 'POST', body: { productId: row.id, fromBranchId: branchId || undefined, toBranchId: to, quantity: Number(quantity) } }),
+    mutationFn: () => api('/inventory/transfer', { method: 'POST', body: { productId: row.id, fromBranchId: branchId || undefined, toBranchId: to, quantity: amt(quantity) } }),
     onSuccess: () => { toast('success', 'Stock transferred'); void client.invalidateQueries({ queryKey: ['stock'] }); onClose(); },
   });
   return (
-    <Modal open onClose={onClose} title={`Transfer: ${row.name}`} footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={() => save.mutate()} loading={save.isPending} disabled={!to || !(Number(quantity) > 0)}>Transfer</Button></>}>
+    <Modal open onClose={onClose} title={`Transfer: ${row.name}`} footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={() => save.mutate()} loading={save.isPending} disabled={!to || !(amt(quantity) > 0)}>Transfer</Button></>}>
       <div className="space-y-3">
         <Select label="Destination branch" value={to} onChange={(e) => setTo(e.target.value)}><option value="">Select…</option>{branches.data?.filter((b) => b.id !== branchId).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select>
         <Input label={`Quantity (${row.unit})`} inputMode="decimal" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
