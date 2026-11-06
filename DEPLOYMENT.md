@@ -17,6 +17,16 @@ Installed apps look for new versions in **this repository's GitHub Releases**, s
 cannot be read by an installed app without a secret saved on every shop PC, so if the repository is ever made private, installed apps
 simply stop finding updates.) No tokens or extra settings are needed: the release workflow already has permission to publish releases.
 
+## Activation keys (stops a copied installer working on another PC)
+
+The installer is public (that is how updates work), so each installed app asks for an activation key made for that one PC.
+
+1. One time: `npm run license -- init`. It keeps the private key in `~/.supermarket-pos-license/` (outside the repo; back it up and never share it) and puts the public key in `desktop/main/licenseKey.ts`. Commit that file, then release. Until you do, licensing is off and every copy runs freely.
+2. A new PC shows an "Activate" screen with a PC code (like `7F3A-91BC-0D42-E8A5`). The shop sends you the code.
+3. You run `npm run license -- issue 7F3A-91BC-0D42-E8A5 "Shop name"` and send back the key. The shop pastes it in. The key works only on that PC.
+4. Shops already running when licensing is released get 14 days, with a banner counting down, to send you their code. New copies are locked at once.
+5. A reinstalled Windows or a new PC has a new code, so it needs a new key. Running from source (`npm run desktop:dev`) is never locked.
+
 ## Trying changes before users get them (test channel)
 
 A test build has its own identity, so it never touches the shop's real data and never updates. It installs next to the real app as "Supermarket POS TEST" (data in `%APPDATA%\supermarket-pos-test`, backups in `Documents\Supermarket POS TEST Backups`).

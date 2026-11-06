@@ -21,6 +21,8 @@ const bridge: PosBridge = {
   updateCheck: (token) => call('update:check', token),
   updateDownload: (token) => call('update:download', token),
   updateInstall: (token) => call('update:install', token),
+  licenseStatus: () => call('license:status'),
+  licenseActivate: (key) => call('license:activate', key),
 };
 
 contextBridge.exposeInMainWorld('pos', bridge);

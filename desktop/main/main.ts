@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { registerApiIpc } from '../ipc/api';
 import { trustOrigin } from '../ipc/handle';
 import { registerGoogleIpc } from '../ipc/google';
+import { registerLicenseIpc } from '../ipc/license';
 import { registerSystemIpc } from '../ipc/system';
 import { registerUpdateIpc } from '../ipc/updates';
 import { channel } from './channel';
@@ -11,6 +12,7 @@ import { startBackend, type Backend } from './backend';
 import { accessToken, googleStatus } from './google';
 import { appRoot } from './paths';
 import { APP_URL, registerAppScheme, serveApp } from './protocol';
+import { initLicense } from './licenseStore';
 import { createUpdaterPort, updatesDisabledReason } from './updater';
 import { createUpdateService } from './updates';
 import { createWindow } from './window';
@@ -29,6 +31,7 @@ const start = async () => {
   session.defaultSession.setPermissionRequestHandler((_contents, _permission, allow) => allow(false));
   serveApp(join(appRoot(), 'frontend'));
 
+  initLicense(); // before the database exists, so an existing shop can be told apart from a fresh copy
   try {
     backend = await startBackend();
   } catch (err) {
@@ -41,6 +44,7 @@ const start = async () => {
   const url = process.env.POS_DEV_URL ?? APP_URL;
   trustOrigin(url);
   registerApiIpc(backend);
+  registerLicenseIpc();
   registerSystemIpc(backend, () => win);
   registerGoogleIpc(backend, () => win);
   startAutoBackup(backend);

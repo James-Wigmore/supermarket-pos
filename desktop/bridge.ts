@@ -55,6 +55,15 @@ export interface UpdateStatus {
   disabledReason: string | null;
 }
 
+export interface LicenseStatus {
+  /** `required`: the app is locked until a key for this PC is entered. `grace`: an existing shop that must activate within `graceDaysLeft` days. */
+  state: 'ok' | 'grace' | 'required' | 'disabled';
+  /** Shown to the shop, which reads it to the developer to get a key. */
+  machineCode: string;
+  shop: string | null;
+  graceDaysLeft: number | null;
+}
+
 /** Calls taking a `token` are administrator-only: the main process verifies it before acting. */
 export interface PosBridge {
   request(req: ApiRequest): Promise<ApiResponse>;
@@ -79,4 +88,7 @@ export interface PosBridge {
   updateDownload(token: string): Promise<UpdateStatus>;
   /** Saves a safety backup, then closes the app, installs the downloaded update and reopens it. */
   updateInstall(token: string): Promise<UpdateStatus>;
+  licenseStatus(): Promise<LicenseStatus>;
+  /** Rejects with a plain message when the key is not valid for this PC. */
+  licenseActivate(key: string): Promise<LicenseStatus>;
 }

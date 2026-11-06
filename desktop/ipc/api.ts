@@ -1,6 +1,7 @@
 import inject from 'light-my-request';
 import type { ApiRequest, ApiResponse } from '../bridge';
 import type { Backend } from '../main/backend';
+import { isLicensed } from '../main/licenseStore';
 import { handle } from './handle';
 
 const METHODS = new Set<string>(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
@@ -14,6 +15,13 @@ const isRequest = (value: unknown): value is ApiRequest => {
     (req.token === undefined || req.token === null || typeof req.token === 'string')
   );
 };
+
+const notActivated = (): ApiResponse => ({
+  status: 402,
+  contentType: 'application/json',
+  disposition: '',
+  body: new Uint8Array(Buffer.from(JSON.stringify({ error: { code: 'NOT_ACTIVATED', message: 'This copy of Supermarket POS is not activated.' } }))),
+});
 
 /** Runs an API request against the Express app in-process: same routes, validation and permissions as before. */
 export const dispatch = async (backend: Backend, req: ApiRequest): Promise<ApiResponse> => {
@@ -35,5 +43,6 @@ export const dispatch = async (backend: Backend, req: ApiRequest): Promise<ApiRe
 export const registerApiIpc = (backend: Backend) =>
   handle('api:request', (_event, req: unknown) => {
     if (!isRequest(req)) throw new Error('Invalid request');
+    if (!isLicensed()) return notActivated();
     return dispatch(backend, req);
   });

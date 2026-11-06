@@ -3,6 +3,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
+import { LicenseGate } from './components/LicenseGate';
 import { ToastProvider } from './components/ui';
 import { ApiError } from './lib/api';
 import { AuthProvider } from './lib/auth';
@@ -23,6 +24,7 @@ const queryClient = new QueryClient({
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
+      <LicenseGate>
       <BrowserRouter>
         <ToastProvider>
           <AuthProvider>
@@ -32,6 +34,7 @@ createRoot(document.getElementById('root')!).render(
           </AuthProvider>
         </ToastProvider>
       </BrowserRouter>
+      </LicenseGate>
     </QueryClientProvider>
   </StrictMode>,
 );

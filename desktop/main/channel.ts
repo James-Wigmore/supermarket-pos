@@ -10,7 +10,7 @@ import { join } from 'node:path';
 const marked = () => {
   try { return JSON.parse(readFileSync(join(app.getAppPath(), 'channel.json'), 'utf8')).channel === 'test'; } catch { return false; }
 };
-export const isTest = process.env.POS_CHANNEL === 'test' || marked();
+export const isTest = (process.env.POS_CHANNEL === 'test' && !app.isPackaged) || marked();
 export const channel = isTest
   ? { isTest, folder: 'supermarket-pos-test', appId: 'com.supermarketpos.desktop.test', name: 'Supermarket POS TEST' }
   : { isTest, folder: 'supermarket-pos', appId: 'com.supermarketpos.desktop', name: 'Supermarket POS' };
