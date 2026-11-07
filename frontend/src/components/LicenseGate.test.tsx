@@ -1,49 +1,84 @@
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { LicenseStatus, PosBridge } from '../../../desktop/bridge';
-import { renderApp, stubBrowser } from '../test/utils';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LicenseGate } from './LicenseGate';
 
-const status = (over: Partial<LicenseStatus> = {}): LicenseStatus => ({ state: 'required', machineCode: '7F3A-91BC-0D42-E8A5', shop: null, graceDaysLeft: null, ...over });
-const bridge = (current: LicenseStatus, activate = vi.fn()) => {
-  window.pos = { licenseStatus: vi.fn(async () => current), licenseActivate: activate } as unknown as PosBridge;
-  return activate;
+const renderGate = () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <LicenseGate>
+        <div>App content</div>
+      </LicenseGate>
+    </QueryClientProvider>,
+  );
 };
-const open = () => renderApp(<LicenseGate><p>The till</p></LicenseGate>);
 
-beforeEach(stubBrowser);
-afterEach(() => { cleanup(); delete window.pos; vi.restoreAllMocks(); });
-
-describe('activating the desktop app', () => {
-  it('does not get in the way in a browser', () => {
-    open();
-    expect(screen.getByText('The till')).toBeTruthy();
+describe('LicenseGate', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
-  it('locks a new copy, shows the PC code, and unlocks after a valid key', async () => {
-    const activate = bridge(status(), vi.fn(async () => status({ state: 'ok', shop: 'Mama Sarah' })));
-    open();
-    expect(await screen.findByText('7F3A-91BC-0D42-E8A5')).toBeTruthy();
-    expect(screen.queryByText('The till')).toBeNull();
-    fireEvent.change(screen.getByLabelText('Activation key'), { target: { value: 'a'.repeat(30) } });
-    fireEvent.click(screen.getByRole('button', { name: 'Activate' }));
-    expect(await screen.findByText('The till')).toBeTruthy();
-    expect(activate).toHaveBeenCalledWith('a'.repeat(30));
+  it('passes straight through in a browser (no window.pos)', async () => {
+    vi.stubGlobal('pos', undefined);
+    renderGate();
+    expect(await screen.findByText('App content')).toBeInTheDocument();
   });
 
-  it('shows why a wrong key failed and stays locked', async () => {
-    bridge(status(), vi.fn(async () => { throw new Error('This key is not valid for this computer.'); }));
-    open();
-    fireEvent.change(await screen.findByLabelText('Activation key'), { target: { value: 'b'.repeat(30) } });
-    fireEvent.click(screen.getByRole('button', { name: 'Activate' }));
-    expect(await screen.findByText(/not valid for this computer/)).toBeTruthy();
-    expect(screen.queryByText('The till')).toBeNull();
+  it('locks the whole app when activation is required, and unlocks on a valid key', async () => {
+    const user = userEvent.setup();
+    const licenseActivate = vi.fn().mockResolvedValue({ state: 'ok', graceDaysLeft: null, machineCode: 'AAAA-BBBB-CCCC-DDDD' });
+    vi.stubGlobal('pos', {
+      licenseStatus: vi.fn().mockResolvedValue({ state: 'required', graceDaysLeft: null, machineCode: 'AAAA-BBBB-CCCC-DDDD' }),
+      licenseActivate,
+    });
+    renderGate();
+
+    expect(await screen.findByText('Activate Supermarket POS')).toBeInTheDocument();
+    expect(screen.queryByText('App content')).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Activation key'), 'a-valid-looking-activation-key-123');
+    await user.click(screen.getByRole('button', { name: 'Activate' }));
+
+    expect(licenseActivate).toHaveBeenCalledWith('a-valid-looking-activation-key-123');
+    expect(await screen.findByText('App content')).toBeInTheDocument();
   });
 
-  it('lets an existing shop keep working during the grace period, with a countdown', async () => {
-    bridge(status({ state: 'grace', graceDaysLeft: 9 }));
-    open();
-    await waitFor(() => expect(screen.getByText('The till')).toBeTruthy());
-    expect(screen.getByRole('status').textContent).toContain('within 9 days');
+  it('shows an error and stays locked when the key is wrong', async () => {
+    const user = userEvent.setup();
+    const licenseActivate = vi.fn().mockRejectedValue(new Error('That key does not match this computer.'));
+    vi.stubGlobal('pos', {
+      licenseStatus: vi.fn().mockResolvedValue({ state: 'required', graceDaysLeft: null, machineCode: 'AAAA-BBBB-CCCC-DDDD' }),
+      licenseActivate,
+    });
+    renderGate();
+
+    await user.type(await screen.findByLabelText('Activation key'), 'a-wrong-key-but-long-enough-12345');
+    await user.click(screen.getByRole('button', { name: 'Activate' }));
+
+    expect(await screen.findByText('That key does not match this computer.')).toBeInTheDocument();
+    expect(screen.queryByText('App content')).not.toBeInTheDocument();
+  });
+
+  it('shows a grace-period banner with a countdown and lets the user activate from it', async () => {
+    const user = userEvent.setup();
+    const licenseActivate = vi.fn().mockResolvedValue({ state: 'ok', graceDaysLeft: null, machineCode: 'AAAA-BBBB-CCCC-DDDD' });
+    vi.stubGlobal('pos', {
+      licenseStatus: vi.fn().mockResolvedValue({ state: 'grace', graceDaysLeft: 13, machineCode: 'AAAA-BBBB-CCCC-DDDD' }),
+      licenseActivate,
+    });
+    renderGate();
+
+    expect(await screen.findByText(/Activate this copy within 13 days/)).toBeInTheDocument();
+    expect(await screen.findByText('App content')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Activate now' }));
+    expect(await screen.findByText('Activate this computer')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Activation key'), 'a-valid-looking-activation-key-123');
+    await user.click(screen.getByRole('button', { name: 'Activate' }));
+
+    expect(licenseActivate).toHaveBeenCalledWith('a-valid-looking-activation-key-123');
   });
 });
