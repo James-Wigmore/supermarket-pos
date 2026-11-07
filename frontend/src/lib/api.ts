@@ -72,6 +72,17 @@ export const api = async <T>(path: string, options: Options = {}): Promise<T> =>
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 };
 
+/** Fetches a PDF and opens it for printing: on the desktop, in the PC's own PDF viewer so the user can pick any printer (thermal label printers included); in a browser, in a new tab. Never saves a file. */
+export const printFile = async (path: string, query?: Query) => {
+  const blob = await (await send(path, { query })).blob();
+  if (!window.pos) { window.open(URL.createObjectURL(blob), '_blank'); return; }
+  try {
+    await window.pos.printFile(new Uint8Array(await blob.arrayBuffer()));
+  } catch (err) {
+    throw new Error((err as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''));
+  }
+};
+
 /** Fetches a protected file (PDF/XLSX/CSV) and hands it to the browser. */
 export const downloadFile = async (path: string, query: Query | undefined, filename: string | null) => {
   const blob = await (await send(path, { query })).blob();

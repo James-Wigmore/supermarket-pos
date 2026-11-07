@@ -68,6 +68,8 @@ export interface LicenseStatus {
 export interface PosBridge {
   request(req: ApiRequest): Promise<ApiResponse>;
   print(): Promise<void>;
+  /** Opens PDF bytes in the PC's default PDF viewer, so the user can choose any printer there, thermal label printers included. */
+  printFile(bytes: Uint8Array): Promise<void>;
   printers(): Promise<PrinterInfo[]>;
   getSettings(token: string): Promise<DesktopSettings>;
   saveSettings(token: string, patch: EditableDesktopSettings): Promise<DesktopSettings>;

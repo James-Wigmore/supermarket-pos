@@ -1,4 +1,8 @@
-import { dialog, type BrowserWindow, type WebContents } from 'electron';
+import { dialog, shell, type BrowserWindow, type WebContents } from 'electron';
+import { randomUUID } from 'node:crypto';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { EditableDesktopSettings, PrinterInfo } from '../bridge';
 import { createBackup, restoreBackup } from '../main/backup';
 import type { Backend } from '../main/backend';
@@ -21,6 +25,15 @@ const printPage = (contents: WebContents) =>
       ok || reason === 'cancelled' ? resolve() : reject(new Error(reason)));
   });
 
+// Opens the file in the PC's default PDF viewer (not a silent print): the user picks the printer there, thermal label printers included.
+const printFile = async (bytes: Uint8Array) => {
+  const dir = mkdtempSync(join(tmpdir(), 'pos-print-'));
+  const file = join(dir, `labels-${randomUUID().slice(0, 8)}.pdf`);
+  writeFileSync(file, bytes);
+  const error = await shell.openPath(file);
+  if (error) throw new Error(error);
+};
+
 const editable = (patch: unknown): EditableDesktopSettings => {
   const p = (patch ?? {}) as Record<string, unknown>;
   return {
@@ -37,6 +50,11 @@ export const registerSystemIpc = (backend: Backend, getWindow: () => BrowserWind
   };
 
   handle('system:print', (event) => printPage(event.sender));
+
+  handle('system:print-file', (_event, bytes: unknown) => {
+    if (!(bytes instanceof Uint8Array) || !bytes.length || bytes.length > 25 * 1024 * 1024) throw new Error('Nothing to print.');
+    return printFile(bytes);
+  });
 
   handle('system:printers', async (event): Promise<PrinterInfo[]> =>
     (await event.sender.getPrintersAsync()).map((p) => ({ name: p.name, isDefault: Boolean((p as { isDefault?: boolean }).isDefault) })));

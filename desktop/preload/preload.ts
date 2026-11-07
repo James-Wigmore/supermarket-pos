@@ -7,6 +7,7 @@ const call = <T>(channel: string, ...args: unknown[]) => ipcRenderer.invoke(chan
 const bridge: PosBridge = {
   request: (req) => call('api:request', req),
   print: () => call('system:print'),
+  printFile: (bytes) => call('system:print-file', bytes),
   printers: () => call('system:printers'),
   getSettings: (token) => call('system:get-settings', token),
   saveSettings: (token, patch) => call('system:save-settings', token, patch),

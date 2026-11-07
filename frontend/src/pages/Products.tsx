@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { Badge, Button, Confirm, DataTable, ErrorNote, Input, Modal, PageHeader, Pagination, Panel, Tabs, inputCls, useToast } from '../components/ui';
 import { Categories } from './Categories';
 import { ReferenceSelect } from '../components/ReferenceSelect';
-import { ApiError, api, downloadFile } from '../lib/api';
+import { ApiError, api, downloadFile, printFile } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { amt, date, fmtNum, money, num, currencyCode } from '../lib/format';
 import { errorMessage, useDebounced } from '../lib/hooks';
@@ -590,7 +590,7 @@ const ProductList = ({ tabs }: { tabs: ReactNode }) => {
   const rows = list.data?.data ?? [];
 
   const toggle = (id: string) => setSelected((cur) => { const next = new Set(cur); if (!next.delete(id)) next.add(id); return next; });
-  const printLabels = (ids: string[]) => void downloadFile('/products/labels.pdf', { ids: ids.join(',') }, 'labels.pdf').catch((err) => toast('error', errorMessage(err)));
+  const printLabels = (ids: string[]) => void printFile('/products/labels.pdf', { ids: ids.join(',') }).catch((err) => toast('error', errorMessage(err)));
 
   const del = useMutation({
     mutationFn: (id: string) =>
