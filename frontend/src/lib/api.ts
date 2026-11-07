@@ -79,7 +79,7 @@ export const printFile = async (path: string, query?: Query) => {
   try {
     await window.pos.printFile(new Uint8Array(await blob.arrayBuffer()));
   } catch (err) {
-    throw new Error((err as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''));
+    throw new Error((err as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { cause: err });
   }
 };
 

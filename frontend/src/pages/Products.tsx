@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { Badge, Button, Confirm, DataTable, ErrorNote, Input, Modal, PageHeader, Pagination, Panel, Tabs, inputCls, useToast } from '../components/ui';
 import { Categories } from './Categories';
 import { ReferenceSelect } from '../components/ReferenceSelect';
-import { ApiError, api, downloadFile, printFile } from '../lib/api';
+import { ApiError, api, printFile } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { amt, date, fmtNum, money, num, currencyCode } from '../lib/format';
 import { errorMessage, useDebounced } from '../lib/hooks';
