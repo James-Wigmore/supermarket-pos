@@ -5,7 +5,7 @@ import { renderApp, stubBrowser } from '../test/utils';
 import { LicenseGate } from './LicenseGate';
 
 const status = (over: Partial<LicenseStatus> = {}): LicenseStatus =>
-  ({ state: 'ok', graceDaysLeft: null, machineCode: 'AAAA-BBBB-CCCC-DDDD', ...over });
+  ({ state: 'ok', graceDaysLeft: null, machineCode: 'AAAA-BBBB-CCCC-DDDD', shop: null, ...over });
 
 const bridge = (current: LicenseStatus) => {
   const pos = { licenseStatus: vi.fn(async () => current), licenseActivate: vi.fn() };
