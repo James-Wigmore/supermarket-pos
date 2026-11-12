@@ -92,7 +92,6 @@ export const Setup = () => {
             {text('email', 'Email (used to sign in)', { type: 'email', autoComplete: 'username' })}
             {text('password', 'Password (8+ characters)', { type: 'password', autoComplete: 'new-password' })}
             {text('confirm', 'Repeat password', { type: 'password', autoComplete: 'new-password', error: f.confirm && f.confirm !== f.password ? 'Passwords do not match' : undefined })}
-            {emailApproval === false && <p role="alert" className="text-sm font-medium text-danger">Email sign-in approval is OFF: this server has no email set up, so everyone signs in with a password only. Set it up later (see the README) to protect admin and manager accounts.</p>}
             {emailApproval && <p className="text-sm text-muted">Email approval is on. Your first sign-in will be sent to this address, so check it carefully.</p>}
           </div>
         )}

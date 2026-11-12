@@ -4,7 +4,6 @@ import { useSearchParams } from 'react-router-dom';
 import { BranchSelect } from '../components/BranchSelect';
 import { Badge, Button, DataTable, ErrorNote, Input, Loading, Modal, PageHeader, Panel, Tabs, useToast } from '../components/ui';
 import { api } from '../lib/api';
-import { useAuth } from '../lib/auth';
 import { isDesktop } from '../lib/desktop';
 import { label } from '../lib/format';
 import { loadSettings, useBranches, usePage } from '../lib/queries';
@@ -17,7 +16,6 @@ const ROLES: Role[] = ['SUPER_ADMIN', 'MANAGER', 'CASHIER', 'STOCK_OFFICER', 'AC
 const General = () => {
   const toast = useToast();
   const client = useQueryClient();
-  const { session } = useAuth();
   const query = useQuery({ queryKey: ['settings'], queryFn: loadSettings });
   const [draft, setS] = useState<SettingsType | null>(null);
   const s = draft ?? query.data ?? null;
@@ -41,7 +39,6 @@ const General = () => {
       </Panel>
       <Panel title="Email login approval">
         <p className="mb-3 text-sm text-muted">People in these roles must approve every sign-in from an email sent to their address. Anyone else can turn it on for themselves under Security.</p>
-        {!session?.loginApproval.configured && <p role="alert" className="mb-3 text-sm font-medium text-danger">Email is not set up on this server, so approval is OFF for everyone and sign-in uses a password only. Set SMTP_HOST, EMAIL_FROM and PUBLIC_BASE_URL (see the README) and restart the server.</p>}
         <div className="flex flex-wrap gap-x-6 gap-y-2">
           {ROLES.map((r) => (
             <label key={r} className="flex items-center gap-2 text-sm font-medium">
