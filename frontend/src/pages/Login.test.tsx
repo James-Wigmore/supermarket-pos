@@ -5,11 +5,12 @@ import { ApiError } from '../lib/api';
 import { renderApp, stubBrowser } from '../test/utils';
 import { Login } from './Login';
 
-const auth = vi.hoisted(() => ({ login: vi.fn(), checkApproval: vi.fn(), cancelApproval: vi.fn() }));
+const auth = vi.hoisted(() => ({ login: vi.fn(), checkApproval: vi.fn(), cancelApproval: vi.fn(), completeTwoFactorLogin: vi.fn() }));
 vi.mock('../lib/auth', () => ({ useAuth: () => ({ session: null, ...auth }) }));
 
 const TOKEN = 'x'.repeat(40);
 const pending = { kind: 'emailApproval', requestToken: TOKEN, secondsLeft: 300, emailHint: 'a***@shop.test' };
+const totpPending = { kind: 'totp', challengeToken: TOKEN };
 const renderLogin = (step?: unknown) => renderApp(<MemoryRouter initialEntries={[{ pathname: '/login', state: step ? { step } : undefined }]}><Login /></MemoryRouter>);
 const type = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
 const signIn = async () => {
@@ -122,5 +123,36 @@ describe('waiting for the emailed approval', () => {
     renderLogin(pending);
     expect(screen.getByText('Approve your sign-in')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Cancel sign-in' })).toBeTruthy();
+  });
+});
+
+describe('an authenticator-app code at login', () => {
+  it('asks for a code once the password is correct, and signs in with it', async () => {
+    auth.login.mockResolvedValue(totpPending);
+    auth.completeTwoFactorLogin.mockResolvedValue(undefined);
+    renderLogin();
+    await signIn();
+    expect(screen.getByText('Enter your code')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Code'), { target: { value: '123456' } });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Verify' })); });
+    expect(auth.completeTwoFactorLogin).toHaveBeenCalledWith(TOKEN, '123456');
+  });
+
+  it('shows an error on a wrong code and lets the person try again', async () => {
+    auth.login.mockResolvedValue(totpPending);
+    auth.completeTwoFactorLogin.mockRejectedValue(new Error('That code is wrong. Check the time on your phone, or use one of your recovery codes.'));
+    renderLogin();
+    await signIn();
+    fireEvent.change(screen.getByLabelText('Code'), { target: { value: '000000' } });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Verify' })); });
+    expect(screen.getByRole('alert').textContent).toMatch(/recovery codes/i);
+  });
+
+  it('goes back to the sign-in form', async () => {
+    auth.login.mockResolvedValue(totpPending);
+    renderLogin();
+    await signIn();
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy();
   });
 });

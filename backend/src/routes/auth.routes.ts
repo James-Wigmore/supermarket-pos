@@ -6,7 +6,7 @@ import * as users from '../services/user.service';
 import { authenticate } from '../middleware/auth';
 import { loginIpLimiter, loginLimiter } from '../middleware/rateLimit';
 import { validate } from '../middleware/validate';
-import { approvalRequestSchema, changePasswordSchema, emailApprovalSchema, loginSchema, signupSchema } from '../validators/auth';
+import { approvalRequestSchema, changePasswordSchema, emailApprovalSchema, loginSchema, signupSchema, twoFactorChallengeSchema, twoFactorCodeSchema, twoFactorDisableSchema } from '../validators/auth';
 
 export const authRouter = Router();
 
@@ -39,6 +39,12 @@ authRouter.post('/login/approval/cancel', loginIpLimiter, validate({ body: appro
   res.json(await cancelApproval(req.body.requestToken, { ip: req.ip, userAgent: req.headers['user-agent'] }));
 });
 
+// Step 2 of signing in with an authenticator app: the challenge token proves the password was already correct.
+authRouter.post('/login/totp', loginIpLimiter, loginLimiter, validate({ body: twoFactorChallengeSchema }), async (req, res) => {
+  const { challengeToken, code } = req.body;
+  res.json(await auth.completeTwoFactorLogin(challengeToken, code, { ip: req.ip, userAgent: req.headers['user-agent'] }));
+});
+
 authRouter.get('/me', authenticate, async (req, res) => {
   res.json(await auth.sessionInfo(req.actor!));
 });
@@ -55,5 +61,23 @@ authRouter.post('/change-password', authenticate, validate({ body: changePasswor
 
 authRouter.post('/email-approval', authenticate, validate({ body: emailApprovalSchema }), async (req, res) => {
   await auth.setEmailApproval(req.actor!, req.body.enabled, req.body.password);
+  res.status(204).end();
+});
+
+authRouter.post('/totp/setup', authenticate, async (req, res) => {
+  res.json(await auth.startTwoFactorSetup(req.actor!));
+});
+
+authRouter.post('/totp/confirm', authenticate, validate({ body: twoFactorCodeSchema }), async (req, res) => {
+  res.json(await auth.confirmTwoFactorSetup(req.actor!, req.body.code));
+});
+
+authRouter.post('/totp/cancel', authenticate, async (req, res) => {
+  await auth.cancelTwoFactorSetup(req.actor!);
+  res.status(204).end();
+});
+
+authRouter.post('/totp/disable', authenticate, validate({ body: twoFactorDisableSchema }), async (req, res) => {
+  await auth.disableTwoFactor(req.actor!, req.body.password);
   res.status(204).end();
 });

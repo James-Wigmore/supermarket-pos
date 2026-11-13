@@ -8,8 +8,10 @@ import { failureLimiter } from '../lib/failureLimiter';
 import { logger } from '../lib/logger';
 import { can, P, ROLE_PERMISSIONS } from '../lib/permissions';
 import { prisma } from '../lib/prisma';
+import { decryptSecret, encryptSecret } from '../lib/secretBox';
 import { getSettings } from '../lib/settings';
-import { signToken } from '../middleware/auth';
+import { generateRecoveryCode, generateTotpSecret, hashRecoveryCode, otpauthUri, verifyTotp } from '../lib/totp';
+import { signToken, signTwoFactorChallenge, verifyTwoFactorChallenge } from '../middleware/auth';
 import type { Actor } from '../types';
 import { describeEmailError, emailConfigured, sendEmail } from './email.service';
 import { cancelOpenApprovals, claimApprovedLogin, startLoginApproval } from './login-approval.service';
@@ -17,6 +19,8 @@ import { cancelOpenApprovals, claimApprovedLogin, startLoginApproval } from './l
 // Compared against when the user does not exist, so timing does not reveal valid emails.
 const DUMMY_HASH = bcrypt.hashSync('not-a-real-password', env.BCRYPT_ROUNDS);
 const passwordChecks = failureLimiter(5, 15 * 60_000, 'Too many wrong passwords. Try again in a few minutes.');
+const totpChecks = failureLimiter(8, 15 * 60_000, 'Too many wrong codes. Try again in a few minutes.');
+const RECOVERY_CODE_COUNT = 8;
 
 export const hashPassword = (password: string) => bcrypt.hash(password, env.BCRYPT_ROUNDS);
 
@@ -31,23 +35,24 @@ export const sessionInfo = async (actor: Actor) => {
   const branch = actor.branchId
     ? await prisma.branch.findUnique({ where: { id: actor.branchId }, select: { id: true, name: true, code: true } })
     : null;
-  const row = await prisma.user.findUniqueOrThrow({ where: { id: actor.id }, select: { role: true, emailApprovalEnabled: true } });
+  const row = await prisma.user.findUniqueOrThrow({ where: { id: actor.id }, select: { role: true, emailApprovalEnabled: true, twoFactorEnabled: true } });
   return {
     user: { id: actor.id, name: actor.name, email: actor.email, role: actor.role, branchId: actor.branchId },
     branch,
     permissions: ROLE_PERMISSIONS[actor.role],
     loginApproval: await approvalPolicy(row),
+    twoFactor: { enabled: row.twoFactorEnabled },
   };
 };
 
-const finishLogin = async (user: User, ctx: Ctx, method: 'password' | 'email_approval', extra: Record<string, unknown> = {}) => {
+const finishLogin = async (user: User, ctx: Ctx, method: 'password' | 'email_approval' | 'totp' | 'totp_recovery', extra: Record<string, unknown> = {}) => {
   await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
   const actor = actorOf(user, ctx);
   await audit(prisma, actor, { action: 'LOGIN', entity: 'User', entityId: user.id, after: { method, ...extra } });
   return { token: signToken(user), ...(await sessionInfo(actor)) };
 };
 
-/** Step 1 of signing in. Returns a session, or (when email approval applies) a pending request to wait on. */
+/** Step 1 of signing in. Returns a session, or a pending step (authenticator code, or email approval) to complete next. */
 export const login = async (email: string, password: string, ctx: Ctx) => {
   const found = await prisma.user.findUnique({ where: { email } });
   const valid = await bcrypt.compare(password, found?.passwordHash ?? DUMMY_HASH);
@@ -55,9 +60,11 @@ export const login = async (email: string, password: string, ctx: Ctx) => {
     if (found) await audit(prisma, null, { action: 'LOGIN_FAILED', entity: 'User', entityId: found.id, after: { email, ...ctx } });
     throw unauthorized('Invalid email or password');
   }
+  // An authenticator app and email approval both prove it is really the account owner; asking for both would just be two logins in a row.
+  if (found.twoFactorEnabled) return { nextStep: 'totp' as const, challengeToken: signTwoFactorChallenge(found) };
   const policy = await approvalPolicy(found);
   if (policy.enabled) return startLoginApproval(found, ctx);
-  // Email security is not running: sign in with the password alone, and say so in the audit log.
+  // No second step is running: sign in with the password alone, and say so in the audit log.
   return finishLogin(found, ctx, 'password', policy.configured ? {} : { emailApproval: 'OFF', wouldRequire: policy.required || policy.optedIn });
 };
 
@@ -65,6 +72,27 @@ export const login = async (email: string, password: string, ctx: Ctx) => {
 export const completeApprovedLogin = async (requestToken: string, ctx: Ctx) => {
   const { user, approvalId } = await claimApprovedLogin(requestToken, ctx);
   return finishLogin(user, ctx, 'email_approval', { approvalId });
+};
+
+/** Step 2 for an authenticator app: the 6-digit code, or one of the one-time recovery codes typed in its place. */
+export const completeTwoFactorLogin = async (challengeToken: string, code: string, ctx: Ctx) => {
+  const { id, tokenVersion } = verifyTwoFactorChallenge(challengeToken);
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user?.isActive || user.tokenVersion !== tokenVersion || !user.twoFactorEnabled || !user.twoFactorSecret) throw unauthorized('Session expired, please sign in again');
+
+  totpChecks.assertOpen(user.id);
+  const step = verifyTotp(decryptSecret(user.twoFactorSecret), code, user.twoFactorLastStep);
+  if (step !== null) {
+    totpChecks.clear(user.id);
+    await prisma.user.update({ where: { id: user.id }, data: { twoFactorLastStep: step } });
+    return finishLogin(user, ctx, 'totp');
+  }
+  if (await consumeRecoveryCode(user, code)) {
+    totpChecks.clear(user.id);
+    return finishLogin(user, ctx, 'totp_recovery');
+  }
+  totpChecks.fail(user.id);
+  throw badRequest('That code is wrong. Check the time on your phone, or use one of your recovery codes.');
 };
 
 export const logout = (actor: Actor) => audit(prisma, actor, { action: 'LOGOUT', entity: 'User', entityId: actor.id });
@@ -105,4 +133,53 @@ export const setEmailApproval = async (actor: Actor, enabled: boolean, password:
   }
   await prisma.user.update({ where: { id: user.id }, data: { emailApprovalEnabled: enabled } });
   await audit(prisma, actor, { action: enabled ? 'EMAIL_APPROVAL_ENABLED' : 'EMAIL_APPROVAL_DISABLED', entity: 'User', entityId: user.id });
+};
+
+/** A matching, unused recovery code is spent (removed) the moment it works, so each one logs in at most once. */
+const consumeRecoveryCode = async (user: User, code: string) => {
+  if (!user.twoFactorRecovery) return false;
+  const hashes = JSON.parse(user.twoFactorRecovery) as string[];
+  const hash = hashRecoveryCode(code);
+  const index = hashes.indexOf(hash);
+  if (index === -1) return false;
+  hashes.splice(index, 1);
+  await prisma.user.update({ where: { id: user.id }, data: { twoFactorRecovery: JSON.stringify(hashes) } });
+  return true;
+};
+
+/** Starts setting up an authenticator app: a fresh secret, stored but not yet active until a code from it is confirmed. */
+export const startTwoFactorSetup = async (actor: Actor) => {
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: actor.id } });
+  if (user.twoFactorEnabled) throw badRequest('An authenticator app is already protecting this account. Turn it off before setting up a new one.');
+  const secret = generateTotpSecret();
+  await prisma.user.update({ where: { id: user.id }, data: { twoFactorSecret: encryptSecret(secret) } });
+  return { secret, otpauthUri: otpauthUri(secret, user.email) };
+};
+
+/** Confirms the app was set up correctly, turns it on, and hands back one-time recovery codes (shown only now). */
+export const confirmTwoFactorSetup = async (actor: Actor, code: string) => {
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: actor.id } });
+  if (user.twoFactorEnabled) throw badRequest('An authenticator app is already protecting this account.');
+  if (!user.twoFactorSecret) throw badRequest('Start setting up the authenticator app first.');
+  const step = verifyTotp(decryptSecret(user.twoFactorSecret), code, null);
+  if (step === null) throw badRequest('That code is wrong or expired. Check the time on your phone and try again.');
+
+  const recoveryCodes = Array.from({ length: RECOVERY_CODE_COUNT }, generateRecoveryCode);
+  await prisma.user.update({ where: { id: user.id }, data: { twoFactorEnabled: true, twoFactorLastStep: step, twoFactorRecovery: JSON.stringify(recoveryCodes.map(hashRecoveryCode)) } });
+  await audit(prisma, actor, { action: 'TWO_FACTOR_ENABLED', entity: 'User', entityId: user.id });
+  return { recoveryCodes };
+};
+
+/** Abandons an in-progress setup (a secret was generated but never confirmed). */
+export const cancelTwoFactorSetup = async (actor: Actor) => {
+  await prisma.user.update({ where: { id: actor.id }, data: { twoFactorSecret: null } });
+};
+
+/** Turning the authenticator app off needs the password, same as email approval. */
+export const disableTwoFactor = async (actor: Actor, password: string) => {
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: actor.id } });
+  if (!user.twoFactorEnabled) return;
+  await checkOwnPassword(user, password);
+  await prisma.user.update({ where: { id: user.id }, data: { twoFactorEnabled: false, twoFactorSecret: null, twoFactorRecovery: null, twoFactorLastStep: null } });
+  await audit(prisma, actor, { action: 'TWO_FACTOR_DISABLED', entity: 'User', entityId: user.id });
 };

@@ -13,6 +13,7 @@ export interface SessionUser {
   permissions: string[];
   /** configured: the server can send approval emails. enabled: approval applies to this user at sign-in. */
   loginApproval: { configured: boolean; required: boolean; optedIn: boolean; enabled: boolean };
+  twoFactor: { enabled: boolean };
 }
 
 export interface SetupStatus { needsSetup: boolean; emailApproval: boolean }

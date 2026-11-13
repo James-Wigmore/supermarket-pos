@@ -1,17 +1,24 @@
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderApp, stubApi, stubBrowser } from '../test/utils';
+import { json, renderApp, stubApi, stubBrowser } from '../test/utils';
 import { SecurityDialog } from './SecurityDialog';
 
 const NOT_SET_UP = { configured: false, required: false, optedIn: false, enabled: false };
-const state = vi.hoisted(() => ({ canManage: true, loginApproval: {} as Record<string, boolean>, reloadSession: vi.fn() }));
-vi.mock('../lib/auth', () => ({ useAuth: () => ({ session: { loginApproval: state.loginApproval }, can: () => state.canManage, reloadSession: state.reloadSession }) }));
+const state = vi.hoisted(() => ({ canManage: true, loginApproval: {} as Record<string, boolean>, twoFactor: { enabled: false }, reloadSession: vi.fn() }));
+vi.mock('../lib/auth', () => ({ useAuth: () => ({ session: { loginApproval: state.loginApproval, twoFactor: state.twoFactor }, can: () => state.canManage, reloadSession: state.reloadSession }) }));
 
 let calls: ReturnType<typeof stubApi>;
 beforeEach(() => {
   stubBrowser();
-  state.canManage = true; state.loginApproval = { configured: true, required: false, optedIn: false, enabled: false }; state.reloadSession.mockReset();
-  calls = stubApi((url, { method }) => (url === '/auth/email-approval' && method === 'POST' ? new Response(null, { status: 204 }) : undefined));
+  state.canManage = true; state.loginApproval = { configured: true, required: false, optedIn: false, enabled: false }; state.twoFactor = { enabled: false }; state.reloadSession.mockReset();
+  calls = stubApi((url, { method }) => {
+    if (url === '/auth/email-approval' && method === 'POST') return new Response(null, { status: 204 });
+    if (url === '/auth/totp/setup' && method === 'POST') return json({ secret: 'JBSWY3DPEHPK3PXP' });
+    if (url === '/auth/totp/confirm' && method === 'POST') return json({ recoveryCodes: ['AAAA-1111', 'BBBB-2222'] });
+    if (url === '/auth/totp/cancel' && method === 'POST') return new Response(null, { status: 204 });
+    if (url === '/auth/totp/disable' && method === 'POST') return new Response(null, { status: 204 });
+    return undefined;
+  });
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
@@ -31,14 +38,14 @@ describe('account security', () => {
   it('says plainly that email approval is not running when the server has no email set up', () => {
     state.loginApproval = NOT_SET_UP;
     renderApp(<SecurityDialog onClose={() => undefined} />);
-    expect(screen.getByText('Off')).toBeTruthy();
+    expect(within(screen.getByText('Email sign-in approval').closest('section')!).getByText('Off')).toBeTruthy();
     expect(screen.getByText(/not set up on this server/i).textContent).toMatch(/password only/i);
     expect(screen.queryByRole('button', { name: 'Turn on' })).toBeNull();
   });
 
   it('turns approval on with the password and refreshes the session', async () => {
     renderApp(<SecurityDialog onClose={() => undefined} />);
-    expect(screen.getByText('Off')).toBeTruthy();
+    expect(within(screen.getByText('Email sign-in approval').closest('section')!).getByText('Off')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Turn on' }));
     const confirm = (await screen.findByRole('button', { name: 'Turn on approval' })) as HTMLButtonElement;
     expect(confirm.disabled).toBe(true);
@@ -72,5 +79,39 @@ describe('account security', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Turn off approval' }));
     await waitFor(() => expect(state.reloadSession).toHaveBeenCalled());
     expect(calls.find((c) => c.url === '/auth/email-approval')!.body).toEqual({ enabled: false, password: 'my-password' });
+  });
+
+  it('sets up the authenticator app: shows the key, confirms a code, and shows recovery codes once', async () => {
+    renderApp(<SecurityDialog onClose={() => undefined} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Set up' }));
+    expect(await screen.findByText('JBSWY3DPEHPK3PXP')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('6-digit code from the app'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm and turn on' }));
+    expect(await screen.findByText(/shown only once/i)).toBeTruthy();
+    expect(calls.find((c) => c.url === '/auth/totp/confirm')?.body).toEqual({ code: '123456' });
+    expect((screen.getByLabelText('Recovery codes') as HTMLTextAreaElement).value).toBe('AAAA-1111\nBBBB-2222');
+
+    fireEvent.click(screen.getByRole('button', { name: /saved these codes/i }));
+    await waitFor(() => expect(state.reloadSession).toHaveBeenCalled());
+  });
+
+  it('cancels setup without turning anything on', async () => {
+    renderApp(<SecurityDialog onClose={() => undefined} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Set up' }));
+    await screen.findByText('JBSWY3DPEHPK3PXP');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(calls.some((c) => c.url === '/auth/totp/cancel')).toBe(true));
+    expect(await screen.findByRole('button', { name: 'Set up' })).toBeTruthy();
+  });
+
+  it('turns the authenticator app off with the password', async () => {
+    state.twoFactor = { enabled: true };
+    renderApp(<SecurityDialog onClose={() => undefined} />);
+    expect(screen.getAllByText('On').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Turn off' }));
+    fireEvent.change(await screen.findByLabelText('Password'), { target: { value: 'my-password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Turn off' }));
+    await waitFor(() => expect(state.reloadSession).toHaveBeenCalled());
+    expect(calls.find((c) => c.url === '/auth/totp/disable')!.body).toEqual({ password: 'my-password' });
   });
 });

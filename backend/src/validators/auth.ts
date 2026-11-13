@@ -11,6 +11,11 @@ const requestToken = z.string().min(20).max(100);
 export const changePasswordSchema = z.object({ currentPassword: z.string().min(1), newPassword: password });
 export const approvalRequestSchema = z.object({ requestToken });
 export const emailApprovalSchema = z.object({ enabled: z.boolean(), password: z.string().min(1) });
+
+const totpCode = z.string().trim().min(6).max(24);
+export const twoFactorChallengeSchema = z.object({ challengeToken: z.string().min(20).max(1000), code: totpCode });
+export const twoFactorCodeSchema = z.object({ code: totpCode });
+export const twoFactorDisableSchema = z.object({ password: z.string().min(1) });
 export const changeEmailSchema = z.object({ email });
 export const resetPasswordSchema = z.object({ password });
 

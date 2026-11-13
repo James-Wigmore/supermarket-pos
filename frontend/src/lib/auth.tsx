@@ -5,9 +5,15 @@ import type { SessionUser } from './types';
 
 export type SessionResult = SessionUser & { token: string };
 export type ApprovalState = 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' | 'CANCELLED' | 'COMPLETED' | 'FAILED';
-export type LoginStep = { kind: 'done' } | { kind: 'emailApproval'; requestToken: string; secondsLeft: number; emailHint: string };
+export type LoginStep =
+  | { kind: 'done' }
+  | { kind: 'emailApproval'; requestToken: string; secondsLeft: number; emailHint: string }
+  | { kind: 'totp'; challengeToken: string };
 
-type LoginResponse = SessionResult | { nextStep: 'emailApproval'; requestToken: string; secondsLeft: number; emailHint: string };
+type LoginResponse =
+  | SessionResult
+  | { nextStep: 'emailApproval'; requestToken: string; secondsLeft: number; emailHint: string }
+  | { nextStep: 'totp'; challengeToken: string };
 
 interface AuthValue {
   session: SessionUser | null;
@@ -18,6 +24,8 @@ interface AuthValue {
   /** Asks the server about a pending sign-in. Once it was approved, collects the session and signs in. */
   checkApproval: (requestToken: string) => Promise<{ status: ApprovalState; secondsLeft: number }>;
   cancelApproval: (requestToken: string) => Promise<void>;
+  /** Step 2 for an authenticator app: a 6-digit code, or one of its recovery codes. */
+  completeTwoFactorLogin: (challengeToken: string, code: string) => Promise<void>;
   startSession: (result: SessionResult) => void;
   reloadSession: () => Promise<void>;
   logout: () => Promise<void>;
@@ -75,9 +83,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       canAny: (...permissions) => permissions.some(has),
       login: async (email, password) => {
         const result = await api<LoginResponse>('/auth/login', { method: 'POST', body: { email, password } });
-        if ('nextStep' in result) return { kind: 'emailApproval', requestToken: result.requestToken, secondsLeft: result.secondsLeft, emailHint: result.emailHint };
+        if ('nextStep' in result) {
+          if (result.nextStep === 'totp') return { kind: 'totp', challengeToken: result.challengeToken };
+          return { kind: 'emailApproval', requestToken: result.requestToken, secondsLeft: result.secondsLeft, emailHint: result.emailHint };
+        }
         startSession(result);
         return { kind: 'done' };
+      },
+      completeTwoFactorLogin: async (challengeToken, code) => {
+        startSession(await api<SessionResult>('/auth/login/totp', { method: 'POST', body: { challengeToken, code } }));
       },
       checkApproval: async (requestToken) => {
         const state = await api<{ status: ApprovalState; secondsLeft: number }>('/auth/login/approval/status', { method: 'POST', body: { requestToken } });

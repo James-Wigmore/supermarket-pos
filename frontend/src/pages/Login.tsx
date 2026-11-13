@@ -5,6 +5,8 @@ import { ApiError } from '../lib/api';
 import { useAuth, type ApprovalState, type LoginStep } from '../lib/auth';
 
 type Pending = Extract<LoginStep, { kind: 'emailApproval' }>;
+type TotpPending = Extract<LoginStep, { kind: 'totp' }>;
+type Step = Pending | TotpPending;
 
 const POLL_MS = 3000;
 const MAX_BACKOFF_MS = 30_000;
@@ -101,10 +103,40 @@ const ApprovalPending = ({ pending, onBack }: { pending: Pending; onBack: () => 
   );
 };
 
+/** The code from an authenticator app, or one of its recovery codes, typed in its place. */
+const TotpChallenge = ({ pending, onBack }: { pending: TotpPending; onBack: () => void }) => {
+  const { completeTwoFactorLogin } = useAuth();
+  const [code, setCode] = useState('');
+  const [error, setError] = useState<unknown>();
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    setBusy(true);
+    setError(undefined);
+    try {
+      await completeTwoFactorLogin(pending.challengeToken, code.trim());
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); void submit(); }} className="space-y-4">
+      <p className="text-sm">Enter the 6-digit code from your authenticator app, or one of your recovery codes.</p>
+      <Input label="Code" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} autoFocus required />
+      <ErrorNote error={error} />
+      <Button type="submit" size="lg" className="w-full" loading={busy} disabled={code.trim().length < 6}>Verify</Button>
+      <Button type="button" variant="secondary" className="w-full" onClick={onBack}>Back</Button>
+    </form>
+  );
+};
+
 export const Login = () => {
   const { session, login } = useAuth();
   const location = useLocation();
-  const [step, setStep] = useState<Pending | null>(() => (location.state as { step?: Pending } | null)?.step ?? null);
+  const [step, setStep] = useState<Step | null>(() => (location.state as { step?: Step } | null)?.step ?? null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<unknown>();
@@ -113,9 +145,17 @@ export const Login = () => {
   if (session) return <Navigate to="/" replace />;
 
   if (step) {
+    const back = () => { setStep(null); setPassword(''); setError(undefined); };
+    if (step.kind === 'totp') {
+      return (
+        <Card title="Enter your code" subtitle="Your password was correct. One more step.">
+          <TotpChallenge pending={step} onBack={back} />
+        </Card>
+      );
+    }
     return (
       <Card title="Approve your sign-in" subtitle="Your password was correct. One more step.">
-        <ApprovalPending pending={step} onBack={() => { setStep(null); setPassword(''); setError(undefined); }} />
+        <ApprovalPending pending={step} onBack={back} />
       </Card>
     );
   }
@@ -125,7 +165,7 @@ export const Login = () => {
     setError(undefined);
     try {
       const next = await login(email.trim(), password);
-      if (next.kind === 'emailApproval') setStep(next);
+      if (next.kind !== 'done') setStep(next);
     } catch (err) {
       setError(err);
     } finally {
